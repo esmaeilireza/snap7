@@ -76,7 +76,7 @@ jobs:
         shell: msys2 {0}
         run: |
           mkdir -p bin/Legacy/win64
-          cp build/bin/Legacy/win64/snap7.dll bin/Legacy/win64/ || true
+          cp build/bin/Legacy/win64/snap7.dll bin/Legacy/win64/
           cd examples/cpp/win64
           make
 
