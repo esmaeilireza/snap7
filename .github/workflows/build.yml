@@ -40,7 +40,8 @@ jobs:
           sed -i '1i #include <cstdint>' examples/cpp/snap7.h
           sed -i 's/typedef uint8_t    byte;/typedef uint8_t    snap7_byte;/g' src/sys/snap_platform.h
           find src/ examples/ -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i 's/\bbyte\b/snap7_byte/g' {} +
-          find src/ examples/ -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i 's/\buint\b/unsigned int/g' {} +
+          find src/ examples/ -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i 's/\buint /unsigned int /g' {} +
+          find src/ examples/ -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i 's/\buint(/((unsigned int)(/g' {} +
 
       - name: Build library (Linux)
         if: runner.os == 'Linux'
