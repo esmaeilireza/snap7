@@ -18,14 +18,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ===== LINUX BUILD ENVIRONMENT =====
       - name: Set up build environment (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential
 
-      # ===== WINDOWS BUILD ENVIRONMENT =====
       - name: Set up build environment (Windows)
         if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
@@ -34,47 +32,48 @@ jobs:
           install: >-
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-binutils
-            mingw-w64-x86_64-dlfcn
             make
 
-      # ===== BUILD LIBRARY (LINUX) =====
       - name: Build library (Linux)
         if: runner.os == 'Linux'
         working-directory: ${{ github.workspace }}/build/unix
         run: make -f x86_64_linux.mk
 
-      # ===== BUILD LIBRARY (WINDOWS) =====
       - name: Build library (Windows)
         if: runner.os == 'Windows'
         working-directory: ${{ github.workspace }}/build/windows/MinGW64
         shell: msys2 {0}
         run: |
-          # Override hardcoded MINGW path with MSYS2's actual MinGW location
-          MINGW_PATH=$(cygpath -m /mingw64)
-          GCC_VERSION=$(gcc -dumpversion)
-          make MINGW="$MINGW_PATH" MINREL="$GCC_VERSION"
+          sed -i 's|C:/MinGW64|/mingw64|g' Makefile
+          sed -i 's|$(MINGW)/lib/gcc/x86_64-w64-mingw32/$(MINREL)/libstdc++.a|-lstdc++|g' Makefile
+          make
 
-      # ===== BUILD LOOPBACK TEST (LINUX) =====
       - name: Build loopback test (Linux)
         if: runner.os == 'Linux'
-        working-directory: ${{ github.workspace }}/examples/cpp/x86_64-linux
-        run: make
+        working-directory: ${{ github.workspace }}
+        run: |
+          mkdir -p bin/x86_64-linux
+          cp build/bin/x86_64-linux/libsnap7.so bin/x86_64-linux/
+          cd examples/cpp/x86_64-linux
+          make
 
-      # ===== BUILD LOOPBACK TEST (WINDOWS) =====
       - name: Build loopback test (Windows)
         if: runner.os == 'Windows'
-        working-directory: ${{ github.workspace }}/examples/cpp/win64
+        working-directory: ${{ github.workspace }}
         shell: msys2 {0}
-        run: make
+        run: |
+          mkdir -p bin/Legacy/win64
+          cp build/bin/Legacy/win64/snap7.dll bin/Legacy/win64/ || true
+          cd examples/cpp/win64
+          make
 
-      # ===== RUN LOOPBACK TEST (LINUX) =====
       - name: Run Linux loopback test
         if: runner.os == 'Linux'
         working-directory: ${{ github.workspace }}/examples/cpp/x86_64-linux
         run: |
+          export LD_LIBRARY_PATH=../../../bin/x86_64-linux:$LD_LIBRARY_PATH
           timeout 60 ./loopback_test || echo "Loopback test completed or timed out"
 
-      # ===== RUN LOOPBACK TEST (WINDOWS) =====
       - name: Run Windows loopback test
         if: runner.os == 'Windows'
         working-directory: ${{ github.workspace }}/examples/cpp/win64
