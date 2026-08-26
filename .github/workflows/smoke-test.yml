@@ -31,62 +31,39 @@ jobs:
           msystem: MINGW64
           install: mingw-w64-x86_64-gcc mingw-w64-x86_64-binutils make
 
-      - name: Build (Linux)
+      - name: Build library (Linux)
         if: runner.os == 'Linux'
         working-directory: ${{ github.workspace }}
         run: make -f build/unix/x86_64_linux.mk
 
-      - name: Build (Windows)
+      - name: Build library (Windows)
         if: runner.os == 'Windows'
         working-directory: ${{ github.workspace }}/build/windows/MinGW64
         shell: msys2 {0}
         run: make
 
-      - name: Run Linux smoke test
+      - name: Build loopback test (Linux)
         if: runner.os == 'Linux'
-        working-directory: ${{ github.workspace }}
-        run: |
-          # Create a simple test to verify library loads
-          cat > /tmp/test_snap7.cpp << 'EOF'
-          #include <iostream>
-          #include <dlfcn.h>
-          #include "../../src/lib/snap7_libmain.h"
-          
-          int main() {
-              void* handle = dlopen("build/bin/x86_64-linux/libsnap7.so", RTLD_LAZY);
-              if (!handle) {
-                  std::cerr << "Failed to load library: " << dlerror() << std::endl;
-                  return 1;
-              }
-              std::cout << "Library loaded successfully" << std::endl;
-              dlclose(handle);
-              return 0;
-          }
-          EOF
-          g++ -std=c++11 /tmp/test_snap7.cpp -o /tmp/test_snap7 -ldl
-          /tmp/test_snap7
+        working-directory: ${{ github.workspace }}/examples/cpp/x86_64-linux
+        run: make loopback_test
 
-      - name: Run Windows smoke test
+      - name: Build loopback test (Windows)
         if: runner.os == 'Windows'
-        working-directory: ${{ github.workspace }}
+        working-directory: ${{ github.workspace }}/examples/cpp/x86_64-linux
+        shell: msys2 {0}
+        run: make loopback_test
+
+      - name: Run Linux loopback test
+        if: runner.os == 'Linux'
+        working-directory: ${{ github.workspace }}/examples/cpp/x86_64-linux
+        run: |
+          # Start test in background and give it time to run
+          timeout 60 ./loopback_test
+
+      - name: Run Windows loopback test
+        if: runner.os == 'Windows'
+        working-directory: ${{ github.workspace }}/examples/cpp/x86_64-linux
         shell: msys2 {0}
         run: |
-          # Create a simple test to verify library loads
-          cat > /tmp/test_snap7.cpp << 'EOF'
-          #include <iostream>
-          #include <windows.h>
-          #include "../../../src/lib/snap7_libmain.h"
-          
-          int main() {
-              HMODULE handle = LoadLibrary("build/bin/Legacy/win64/snap7.dll");
-              if (!handle) {
-                  std::cerr << "Failed to load library, error: " << GetLastError() << std::endl;
-                  return 1;
-              }
-              std::cout << "Library loaded successfully" << std::endl;
-              FreeLibrary(handle);
-              return 0;
-          }
-          EOF
-          g++ /tmp/test_snap7.cpp -o /tmp/test_snap7.exe
-          /tmp/test_snap7.exe
+          # Start test and give it time to run
+          timeout 60 ./loopback_test.exe
