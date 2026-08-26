@@ -37,19 +37,15 @@ jobs:
       - name: Patch C++ compatibility issues
         shell: bash
         run: |
-          # Fix 1: Add missing <cstdint> for uint32_t
+          # Fix 1: Add missing <cstdint> for uint32_t in examples header
           sed -i '1i #include <cstdint>' examples/cpp/snap7.h
           
           # Fix 2: Resolve ambiguous byte typedef conflict with std::byte
           sed -i 's/typedef uint8_t    byte;/typedef uint8_t    snap7_byte;/g' src/sys/snap_platform.h
           find src/ examples/ -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i 's/\bbyte\b/snap7_byte/g' {} +
           
-          # Fix 3: Replace non-standard uint type declarations ONLY (not casts)
-          # This matches "uint " (with trailing space) which is always a declaration
-          find src/ examples/ -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i 's/\buint /unsigned int /g' {} +
-          
-          # Fix 4: Replace uint( casts with proper C-style casts
-          find src/ examples/ -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i 's/\buint(/((unsigned int)(/g' {} +
+          # Fix 3: Add typedef for non-standard uint type (safe, no regex replacement needed)
+          sed -i '/#include <stdint.h>/a typedef unsigned int uint;' src/sys/snap_platform.h
 
       - name: Build library (Linux)
         if: runner.os == 'Linux'
