@@ -19,7 +19,7 @@ OUTPATH  = ../../bin/Legacy/win64/
 DLL      = snap7.dll
 OUTLIB   = $(OUTPATH)snap7.lib
 BIN      = $(OUTPATH)$(DLL)
-CXXFLAGS = $(CXXINCS) -DBUILDING_DLL=1 -Ofast -pedantic
+CXXFLAGS = -std=gnu++14 $(CXXINCS) -DBUILDING_DLL=1 -Ofast -pedantic
 CFLAGS   = $(INCS) -DBUILDING_DLL=1 -Ofast -pedantic
 RM       = rm -f
 
