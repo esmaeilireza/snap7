@@ -1,0 +1,92 @@
+name: Smoke Test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  smoke-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        architecture: [x64]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up build environment (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Set up build environment (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-binutils make
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        working-directory: ${{ github.workspace }}
+        run: make -f build/unix/x86_64_linux.mk
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        working-directory: ${{ github.workspace }}/build/windows/MinGW64
+        shell: msys2 {0}
+        run: make
+
+      - name: Run Linux smoke test
+        if: runner.os == 'Linux'
+        working-directory: ${{ github.workspace }}
+        run: |
+          # Create a simple test to verify library loads
+          cat > /tmp/test_snap7.cpp << 'EOF'
+          #include <iostream>
+          #include <dlfcn.h>
+          #include "../../src/lib/snap7_libmain.h"
+          
+          int main() {
+              void* handle = dlopen("build/bin/x86_64-linux/libsnap7.so", RTLD_LAZY);
+              if (!handle) {
+                  std::cerr << "Failed to load library: " << dlerror() << std::endl;
+                  return 1;
+              }
+              std::cout << "Library loaded successfully" << std::endl;
+              dlclose(handle);
+              return 0;
+          }
+          EOF
+          g++ -std=c++11 /tmp/test_snap7.cpp -o /tmp/test_snap7 -ldl
+          /tmp/test_snap7
+
+      - name: Run Windows smoke test
+        if: runner.os == 'Windows'
+        working-directory: ${{ github.workspace }}
+        shell: msys2 {0}
+        run: |
+          # Create a simple test to verify library loads
+          cat > /tmp/test_snap7.cpp << 'EOF'
+          #include <iostream>
+          #include <windows.h>
+          #include "../../../src/lib/snap7_libmain.h"
+          
+          int main() {
+              HMODULE handle = LoadLibrary("build/bin/Legacy/win64/snap7.dll");
+              if (!handle) {
+                  std::cerr << "Failed to load library, error: " << GetLastError() << std::endl;
+                  return 1;
+              }
+              std::cout << "Library loaded successfully" << std::endl;
+              FreeLibrary(handle);
+              return 0;
+          }
+          EOF
+          g++ /tmp/test_snap7.cpp -o /tmp/test_snap7.exe
+          /tmp/test_snap7.exe
