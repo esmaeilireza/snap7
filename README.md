@@ -14,3 +14,13 @@ For more details I refer to the commit history.
 Please note that this fork is currently at version 1.4.0.
 
 Cleanup, more fixes and documentation will follow.
+
+## License
+
+This repository includes the applicable license texts in the repository root:
+
+- [GPL license text](gpl.txt)
+- [LGPL v3.0 license text](lgpl-3.0.txt)
+
+Please review the applicable license terms before using, modifying,
+or redistributing this software.
