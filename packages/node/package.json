@@ -1,0 +1,11 @@
+{
+  "name": "snap7-node-wrapper",
+  "version": "0.1.0",
+  "description": "Work-in-progress Node.js wrapper for the Snap7 native library",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"No tests yet\" && exit 0"
+  },
+  "license": "MIT",
+  "private": true
+}
