@@ -21,7 +21,8 @@ all:
 	$(CXX) $(CXXFLAGS) -o server ../server.cpp ../$(Wrapper) $(Libs) 
 	$(CXX) $(CXXFLAGS) -o srv_resourceless ../srv_resourceless.cpp ../$(Wrapper) $(Libs) 
 	$(CXX) $(CXXFLAGS) -o apartner ../apartner.cpp ../$(Wrapper) $(Libs) 
-	$(CXX) $(CXXFLAGS) -o ppartner ../ppartner.cpp ../$(Wrapper) $(Libs) 
+	$(CXX) $(CXXFLAGS) -o ppartner ../ppartner.cpp ../$(Wrapper) $(Libs)
+	$(CXX) $(CXXFLAGS) -std=c++11 -pthread -o loopback_test ../loopback_test.cpp ../$(Wrapper) $(Libs)
 
 clean:
 	$(RM) client
@@ -29,3 +30,4 @@ clean:
 	$(RM) srv_resourceless
 	$(RM) apartner
 	$(RM) ppartner
+	$(RM) loopback_test
