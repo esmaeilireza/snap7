@@ -34,6 +34,20 @@ jobs:
             mingw-w64-x86_64-binutils
             make
 
+      # ===== PATCH LEGACY C++ CODE FOR MODERN COMPILERS =====
+      - name: Patch C++ compatibility issues
+        shell: bash
+        run: |
+          # Fix 1: Add missing <cstdint> for uint32_t in examples header
+          sed -i '1i #include <cstdint>' examples/cpp/snap7.h
+          
+          # Fix 2: Resolve ambiguous 'byte' typedef conflict with std::byte (C++17)
+          sed -i 's/typedef uint8_t    byte;/typedef uint8_t    snap7_byte;/g' src/sys/snap_platform.h
+          find src/ examples/ -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i 's/\bbyte\b/snap7_byte/g' {} +
+          
+          # Fix 3: Replace non-standard 'uint' with 'unsigned int' for modern GCC
+          find src/ examples/ -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i 's/\buint\b/unsigned int/g' {} +
+
       - name: Build library (Linux)
         if: runner.os == 'Linux'
         working-directory: ${{ github.workspace }}/build/unix
