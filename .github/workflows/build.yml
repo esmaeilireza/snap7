@@ -13,15 +13,6 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         architecture: [x64]
-        include:
-          - os: ubuntu-latest
-            architecture: x64
-            makefile: build/unix/x86_64_linux.mk
-            target: libsnap7.so
-          - os: windows-latest
-            architecture: x64
-            makefile: build/windows/MinGW64/Makefile
-            target: snap7.dll
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
@@ -38,33 +29,21 @@ jobs:
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
-          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-binutils make
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-binutils
+            make
 
-      - name: Build (Linux)
+      - name: Build library (Linux)
         if: runner.os == 'Linux'
-        working-directory: ${{ github.workspace }}
-        run: |
-          make -f ${{ matrix.makefile }}
-          ls -la build/bin/x86_64-linux/
+        working-directory: ${{ github.workspace }}/build/unix
+        run: make -f x86_64_linux.mk
 
-      - name: Build (Windows)
+      - name: Build library (Windows)
         if: runner.os == 'Windows'
         working-directory: ${{ github.workspace }}/build/windows/MinGW64
         shell: msys2 {0}
         run: |
+          sed -i 's|C:/MinGW64|/mingw64|g' Makefile
+          sed -i 's|$(MINGW)/lib/gcc/x86_64-w64-mingw32/$(MINREL)/libstdc++.a|-lstdc++|g' Makefile
           make
-          ls -la ../../bin/Legacy/win64/
-
-      - name: Upload Linux artifact
-        if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
-        with:
-          name: snap7-linux-x64
-          path: build/bin/x86_64-linux/libsnap7.so
-
-      - name: Upload Windows artifact
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: snap7-windows-x64
-          path: build/bin/Legacy/win64/snap7.dll
