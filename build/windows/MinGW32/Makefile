@@ -3,7 +3,7 @@
 #
 # Change vars MINGW and MINREL in accord to your compiler path/release
 #                
-MINGW    =C:/MinGW32
+MINGW    ?= $(shell dirname $(shell dirname $(shell which g++)))
 MINREL   =4.7.2
 #
 #
@@ -12,7 +12,7 @@ CC       = gcc.exe
 TEMP     =../../temp
 OBJ      = $(TEMP)/win32/snap_msgsock.o $(TEMP)/win32/snap_sysutils.o $(TEMP)/win32/snap_tcpsrvr.o $(TEMP)/win32/snap_threads.o $(TEMP)/win32/s7_client.o $(TEMP)/win32/s7_isotcp.o $(TEMP)/win32/s7_micro_client.o $(TEMP)/win32/s7_partner.o $(TEMP)/win32/s7_peer.o $(TEMP)/win32/s7_server.o $(TEMP)/win32/s7_text.o $(TEMP)/win32/snap7_libmain.o
 LINKOBJ  = $(TEMP)/win32/snap_msgsock.o $(TEMP)/win32/snap_sysutils.o $(TEMP)/win32/snap_tcpsrvr.o $(TEMP)/win32/snap_threads.o $(TEMP)/win32/s7_client.o $(TEMP)/win32/s7_isotcp.o $(TEMP)/win32/s7_micro_client.o $(TEMP)/win32/s7_partner.o $(TEMP)/win32/s7_peer.o $(TEMP)/win32/s7_server.o $(TEMP)/win32/s7_text.o $(TEMP)/win32/snap7_libmain.o
-LIBS     = -L"$(MINGW)/lib" -static-libgcc --no-export-all-symbols --add-stdcall-alias $(MINGW)/lib/libws2_32.a $(MINGW)/lib/libwinmm.a $(MINGW)/lib/gcc/mingw32/$(MINREL)/libstdc++.a 
+LIBS     = -static-libgcc --no-export-all-symbols --add-stdcall-alias -lws2_32 -lwinmm -static-libstdc++ 
 INCS     = -I"$(MINGW)/include" -I"../../../src/sys" -I"../../../src/core" -I"../../../src/lib"
 CXXINCS  = -I"$(MINGW)/include" -I"../../../src/sys" -I"../../../src/core" -I"../../../src/lib"
 OUTPATH  = ../../bin/Legacy/win32/
