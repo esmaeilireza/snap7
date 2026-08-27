@@ -3,7 +3,7 @@
 #
 # Change vars MINGW and MINREL in accord to your compiler path/release
 #
-MINGW    =C:/MinGW64
+MINGW   ?= $(shell dirname $(shell dirname $(shell which g++)))
 MINREL   =4.7.1
 #
 #
@@ -12,14 +12,14 @@ CC       = gcc.exe
 TEMP     =../../temp
 OBJ      = $(TEMP)/win64/snap_msgsock.o $(TEMP)/win64/snap_sysutils.o $(TEMP)/win64/snap_tcpsrvr.o $(TEMP)/win64/snap_threads.o $(TEMP)/win64/s7_client.o $(TEMP)/win64/s7_isotcp.o $(TEMP)/win64/s7_micro_client.o $(TEMP)/win64/s7_partner.o $(TEMP)/win64/s7_peer.o $(TEMP)/win64/s7_server.o $(TEMP)/win64/s7_text.o $(TEMP)/win64/snap7_libmain.o
 LINKOBJ  = $(TEMP)/win64/snap_msgsock.o $(TEMP)/win64/snap_sysutils.o $(TEMP)/win64/snap_tcpsrvr.o $(TEMP)/win64/snap_threads.o $(TEMP)/win64/s7_client.o $(TEMP)/win64/s7_isotcp.o $(TEMP)/win64/s7_micro_client.o $(TEMP)/win64/s7_partner.o $(TEMP)/win64/s7_peer.o $(TEMP)/win64/s7_server.o $(TEMP)/win64/s7_text.o $(TEMP)/win64/snap7_libmain.o
-LIBS     = -L"$(MINGW)/x86_64-w64-mingw32/lib" -static-libgcc --no-export-all-symbols --add-stdcall-alias $(MINGW)/x86_64-w64-mingw32/lib/libws2_32.a $(MINGW)/x86_64-w64-mingw32/lib/libwinmm.a $(MINGW)/lib/gcc/x86_64-w64-mingw32/$(MINREL)/libstdc++.a 
-INCS     = -I"$(MINGW)/x86_64-w64-mingw32/include" -I"../../../src/sys" -I"../../../src/core" -I"../../../src/lib"
-CXXINCS  = -I"$(MINGW)/x86_64-w64-mingw32/include" -I"../../../src/sys" -I"../../../src/core" -I"../../../src/lib"
+LIBS     = -static-libgcc -static-libstdc++ --no-export-all-symbols --add-stdcall-alias -lws2_32 -lwinmm
+INCS     = -I"../../../src/sys" -I"../../../src/core" -I"../../../src/lib"
+CXXINCS  = -I"../../../src/sys" -I"../../../src/core" -I"../../../src/lib"
 OUTPATH  = ../../bin/Legacy/win64/
 DLL      = snap7.dll
 OUTLIB   = $(OUTPATH)snap7.lib
 BIN      = $(OUTPATH)$(DLL)
-CXXFLAGS = $(CXXINCS) -DBUILDING_DLL=1 -Ofast -pedantic
+CXXFLAGS = -std=gnu++14 $(CXXINCS) -DBUILDING_DLL=1 -Ofast -pedantic
 CFLAGS   = $(INCS) -DBUILDING_DLL=1 -Ofast -pedantic
 RM       = rm -f
 

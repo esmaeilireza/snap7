@@ -355,11 +355,11 @@ private:
     void DisposeAll();
     // ring buffer for diagnostic messages
     byte DiagBuffer[MaxDiagBufferItems][DiagItemLength];
-    uint AddedDiagItemCount;
+    uint32_t AddedDiagItemCount;
     PSnapCriticalSection CSDiag;
     DiagRequestMap diag_requests;
     DiagResponseMap diag_responses;
-    uint GetDiagItemCount();
+    uint32_t GetDiagItemCount();
     byte freeDiagJobID(longword client_id);
     // An unordered map with SZL answers keyed by ID and INDEX
     SZLAnswerMap cache;
