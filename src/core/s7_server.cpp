@@ -1813,7 +1813,7 @@ void TS7Worker::BLK_ListBoT(byte BlockType, bool Start, TCB &CB)
     Data=PDataFunGetBot(pbyte(&CB.Answer)+ResHeaderSize17+sizeof(TResFunGetBlockInfo));
 
     int area;
-    uint i = 0, j = 0;
+    uint32_t i = 0, j = 0;
     byte uk, blockLang;
     size_t listLen;
     switch (BlockType) {
@@ -2022,7 +2022,7 @@ void TS7Worker::SZLSystemState()
  *
  * bool first: True if this packet is the first one for this SZL-answer
  * bool last : True if this packet is the last  one for this SZL-answer
- * uint dataSize: The size of the remaining data following the SZL header.
+ * uint32_t dataSize: The size of the remaining data following the SZL header.
  *
  *
  * Result: The full buffer length of the S7-PDU with all headers included.
@@ -2259,7 +2259,7 @@ void TS7Worker::SZLCData(int SZLID, void *P, int len)
 // dynamic diagnostic buffer
 void TS7Worker::SZL_ID0A0()
 {
-    uint items = FServer->GetDiagItemCount();
+    uint32_t items = FServer->GetDiagItemCount();
     size_t bufferSize = items * DiagItemLength;
     byte buffer[MaxDiagBufferItems * DiagItemLength];
     PS7ResSZLDataFirst ResData = PS7ResSZLDataFirst(SZL.ResData);
@@ -2268,7 +2268,7 @@ void TS7Worker::SZL_ID0A0()
     SZL.ResParams->Err  =0x0000;
     ResData->Ret = 0xFF;
     ResData->TS = TS_ResOctet;
-    ResData->DLen = SwapWord(uint(bufferSize + 8));
+    ResData->DLen = SwapWord(uint32_t(bufferSize + 8));
     ResData->ID = 0xA000;
     ResData->Index = 0x0000;
     ResData->ListLen = SwapWord(DiagItemLength);
@@ -2939,7 +2939,7 @@ void TSnap7Server::AddDiagItem(pbyte Item)
     AddedDiagItemCount++;
 }
 //------------------------------------------------------------------------------
-uint TSnap7Server::GetDiagItemCount() {
+uint32_t TSnap7Server::GetDiagItemCount() {
     return AddedDiagItemCount > MaxDiagBufferItems ? MaxDiagBufferItems : AddedDiagItemCount;
 }
 //------------------------------------------------------------------------------

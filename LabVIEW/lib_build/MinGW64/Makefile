@@ -3,7 +3,7 @@
 #
 # Change vars MINGW and MINREL in accord to your compiler path/release
 #                
-MINGW    =C:/MinGW64
+MINGW    ?= $(shell dirname $(shell dirname $(shell which g++)))
 MINREL   =4.7.1
 #
 #
@@ -12,7 +12,7 @@ CC       = gcc.exe
 TEMP     =../../lib_tmp
 OBJ      = $(TEMP)/win64/lv_snap7.o
 LINKOBJ  = $(TEMP)/win64/lv_snap7.o
-LIBS     = -L"$(MINGW)/x86_64-w64-mingw32/lib" -static-libgcc --no-export-all-symbols --add-stdcall-alias $(MINGW)/lib/gcc/x86_64-w64-mingw32/$(MINREL)/libstdc++.a ../../../release/windows/win64/snap7.lib
+LIBS     = -static-libgcc --no-export-all-symbols --add-stdcall-alias -static-libstdc++ ../../../release/windows/win64/snap7.lib
 CXXINCS  = -I"$(MINGW)/include"
 OUTPATH  = ../../lib/win64/
 DLL      = lv_snap7.dll
