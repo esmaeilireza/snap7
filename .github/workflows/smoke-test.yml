@@ -75,8 +75,8 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: msys2 {0}
         run: |
-          mkdir -p bin/Legacy/win64
-          cp build/bin/Legacy/win64/snap7.dll bin/Legacy/win64/
+          cp build/bin/Legacy/win64/snap7.dll examples/cpp/win64/snap7.dll
+          cp build/bin/Legacy/win64/snap7.lib examples/cpp/win64/snap7.lib
           cd examples/cpp/win64
           make
 
