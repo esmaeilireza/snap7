@@ -105,15 +105,23 @@ class MetricDisplay(tk.Frame):
 
 
 class InfoRow(tk.Frame):
-    def __init__(self, parent, label="Label", value="--", value_color=T.PRIMARY, **kwargs):
+    """A row with a label on the left and a value on the right."""
+    def __init__(self, parent, label, value, value_color=None, **kwargs):
         super().__init__(parent, bg=T.BG_PANEL, **kwargs)
-        tk.Label(self, text=label, bg=T.BG_PANEL, fg=T.TEXT_SECONDARY,
-                 font=T.FONT_SMALL).pack(side='left')
-        self.value_label = tk.Label(self, text=str(value), bg=T.BG_PANEL,
-                                    fg=value_color, font=T.FONT_MONO_NORMAL)
-        self.value_label.pack(side='right')
+        
+        self.label_widget = tk.Label(
+            self, text=label, bg=T.BG_PANEL, fg=T.TEXT_SECONDARY, 
+            font=T.FONT_SMALL, anchor='w'
+        )
+        self.label_widget.pack(side='left')
 
-    def set_value(self, value, color=None):
-        self.value_label.config(text=str(value))
-        if color:
-            self.value_label.config(fg=color)
+        # FIX: Use monospaced font and right alignment to prevent clipping
+        color = value_color if value_color else T.TEXT_PRIMARY
+        self.value_widget = tk.Label(
+            self, text=str(value), bg=T.BG_PANEL, fg=color, 
+            font=T.FONT_MONO_SMALL, anchor='e'
+        )
+        self.value_widget.pack(side='right', fill='x', expand=True)
+
+    def set_value(self, value):
+        self.value_widget.config(text=str(value))

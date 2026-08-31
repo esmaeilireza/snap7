@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+"""
+S7 SCADA - Fork-Integrated Industrial Dashboard
+Fixed: Function naming, DPI awareness, font resolution, safe shutdown,
+       deferred initial log messages.
+"""
 import sys
 import time
 import threading
@@ -9,23 +14,28 @@ from pathlib import Path
 if sys.platform == 'win32':
     from ctypes import windll
     try:
-        windll.shcore.SetProcessDpiAwareness(1)     # Windows 8.1+
+        windll.shcore.SetProcessDpiAwareness(2)
     except Exception:
         try:
-            windll.user32.SetProcessDPIAware()      # fallback for older
+            windll.shcore.SetProcessDpiAwareness(1)
         except Exception:
-            pass
+            try:
+                windll.user32.SetProcessDPIAware()
+            except Exception:
+                pass
 
-# Now we can safely import tkinter and matplotlib
 import tkinter as tk
+from tkinter import font as tkfont
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 from ui.dashboard_ui import SCADADashboard
-from fork_bridge import (Snap7ForkLibrary, ForkServer, ForkClient,
-                         gather_build_info, ForkBuildError, DEFAULT_PORT,
-                         DB1_TEMP_OFFSET, DB1_CPU_OFFSET, DB1_RAM_OFFSET,
-                         DB1_SETPOINT_OFFSET, DB1_HEARTBEAT_OFFSET)
+from fork_bridge import (
+    Snap7ForkLibrary, ForkServer, ForkClient,
+    gather_build_info, ForkBuildError, DEFAULT_PORT,
+    DB1_TEMP_OFFSET, DB1_CPU_OFFSET, DB1_RAM_OFFSET,
+    DB1_SETPOINT_OFFSET, DB1_HEARTBEAT_OFFSET,
+)
 from sensor_simulator import TemperatureSensorSimulator, SystemMetricsSimulator
 
 
@@ -60,11 +70,34 @@ def start_plc_simulation_worker(writer_client, sensor_sim, system_sim, stop_even
     return t
 
 
+def _resolve_font_family(preferred: str) -> str:
+    """Return preferred font if available, otherwise best system fallback."""
+    root_probe = tk.Tk()
+    root_probe.withdraw()
+    available = set(tkfont.families(root_probe))
+    root_probe.destroy()
+
+    fallback_chain = [
+        preferred,
+        'Segoe UI',
+        'Tahoma',
+        'Arial',
+        'sans-serif',
+    ]
+    for family in fallback_chain:
+        if family in available:
+            return family
+    return 'Arial'
+
+
 def main():
-    args = parse_arguments()
+    # 🔧 FIX: Changed parse_args() to parse_arguments() to match definition
+    args = parse_arguments() 
+    
     print("=" * 70)
     print("  S7 SCADA - Fork-Integrated Industrial Dashboard")
     print("=" * 70)
+    
     stop_event = threading.Event()
     lib, server, reader_client, writer_client, worker = None, None, None, None, None
     server_mode = "UI SIMULATION (no protocol)"
@@ -109,28 +142,49 @@ def main():
     build_info = gather_build_info(lib.path if lib else None)
     print(f"[INFO] branch={build_info['branch']} commit={build_info['commit']} sha256={build_info['dll_sha']}")
 
-    # Apply Tk scaling to match system DPI
-    root = tk.Tk()
-    root.tk.call('tk', 'scaling', root.winfo_fpixels('1i') / 72.0)
-    root.destroy()  # we only need the scaling value; will create real window later
+    resolved_font = _resolve_font_family('Segoe UI Variable')
+    print(f"[INFO] Resolved UI font: {resolved_font}")
+
+    probe = tk.Tk()
+    probe.withdraw()
+    dpi_scale = probe.winfo_fpixels('1i') / 72.0
+    probe.tk.call('tk', 'scaling', dpi_scale)
+    probe.withdraw()
+    probe.update_idletasks()
+    probe.destroy()
 
     dashboard = SCADADashboard(
         client=reader_client, build_info=build_info, server_mode=server_mode,
         sensor_sim=TemperatureSensorSimulator(setpoint=65.5),
         system_sim=SystemMetricsSimulator(),
+        resolved_font=resolved_font,
     )
-    dashboard.log_message('INFO', 'FORK', f"Loaded {build_info['dll_rel']}")
-    dashboard.log_message('INFO', 'FORK', f"sha256={build_info['dll_sha']} commit={build_info['commit']}")
+    
+
+    # FIX: Defer log messages until after mainloop starts processing events.
+    # Previously these were called synchronously before mainloop(), which
+    # meant the Treeview widget existed but wasn't rendered yet.
+    def inject_startup_logs():
+        dashboard.log_message('INFO', 'FORK', f"Loaded {build_info.get('dll_rel', 'n/a')}")
+        dashboard.log_message('INFO', 'FORK', f"sha256={build_info.get('dll_sha', 'n/a')} commit={build_info.get('commit', 'n/a')}")
+        dashboard.log_message('INFO', 'SYSTEM', 'Dashboard initialized successfully.')
+        dashboard.log_message('INFO', 'SYSTEM', f"Server mode: {server_mode}")
+
+    dashboard.after(300, inject_startup_logs)
 
     def teardown():
         stop_event.set()
         for c in (reader_client, writer_client):
             if c:
-                try: c.close()
-                except Exception: pass
+                try:
+                    c.close()
+                except Exception:
+                    pass
         if server:
-            try: server.stop()
-            except Exception: pass
+            try:
+                server.stop()
+            except Exception:
+                pass
 
     dashboard.on_shutdown = teardown
     try:
