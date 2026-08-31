@@ -39,3 +39,7 @@ Thumbs.db
 *.log
 *.tmp
 *_backup/
+
+demo/nul
+demo/instruction.docx
+demo/report_*.csv

@@ -1,3 +1,9 @@
+"""
+S7 SCADA Dashboard UI - Integrated with ViewManager
+Fixed: Font resolution, post-destroy safety, ttk ThemeChanged suppression,
+       datetime-safe chart xlim, deterministic shutdown ordering,
+       geometry manager conflicts, layout clipping, and log visibility.
+"""
 import tkinter as tk
 from datetime import datetime
 import queue
@@ -8,102 +14,222 @@ from .widgets import Badge, MetricDisplay
 from .chart_widget import LiveChartWidget
 from .log_widget import LogWidget
 from .asset_panel import AssetPanel
-from .status_cards import (ForkBuildCard, ConnectionCard, SystemStatusBar)
-from fork_bridge import (DB1_TEMP_OFFSET, DB1_CPU_OFFSET, DB1_RAM_OFFSET,
-                         DB1_SETPOINT_OFFSET)
+from .status_cards import ForkBuildCard, ConnectionCard, SystemStatusBar
+from fork_bridge import (
+    DB1_TEMP_OFFSET, DB1_CPU_OFFSET, DB1_RAM_OFFSET, DB1_SETPOINT_OFFSET,
+)
+from .views import (
+    ViewManager, DashboardView, AssetsView, DataMonitorView,
+    AlarmsView, TrendsView, ReportsView, SettingsView,
+)
 
 
+# ======================================================================
+# TopBar
+# ======================================================================
 class TopBar(tk.Frame):
+    """Header bar with logo, title, and live clock."""
+
     def __init__(self, parent, **kwargs):
         super().__init__(parent, bg=T.BG_DARK, **kwargs)
+        self._alive = True
         self._build_ui()
         self._update_clock()
 
     def _build_ui(self):
+        # --- Logo ---
         logo_frame = tk.Frame(self, bg=T.BG_DARK)
         logo_frame.pack(side='left', padx=T.PADDING_LG, pady=T.PADDING_SM)
+
         s7_frame = tk.Frame(logo_frame, bg=T.BG_DARK)
         s7_frame.pack(anchor='w')
-        tk.Label(s7_frame, text="S7", bg=T.BG_DARK, fg=T.PRIMARY,
-                 font=('Tahoma', 22, 'bold')).pack(side='left')
-        tk.Label(s7_frame, text=" SCADA", bg=T.BG_DARK, fg=T.TEXT_PRIMARY,
-                 font=('Tahoma', 16, 'bold')).pack(side='left')
-        tk.Label(logo_frame, text="INDUSTRIAL SUITE", bg=T.BG_DARK,
-                 fg=T.TEXT_DIM, font=('Tahoma', 9)).pack(anchor='w')
+
+        tk.Label(
+            s7_frame, text="S7", bg=T.BG_DARK, fg=T.PRIMARY,
+            font=T.FONT_LOGO,
+        ).pack(side='left')
+
+        tk.Label(
+            s7_frame, text=" SCADA", bg=T.BG_DARK, fg=T.TEXT_PRIMARY,
+            font=T.FONT_SUBTITLE,
+        ).pack(side='left')
+
+        tk.Label(
+            logo_frame, text="INDUSTRIAL SUITE", bg=T.BG_DARK,
+            fg=T.TEXT_DIM, font=T.FONT_XS,
+        ).pack(anchor='w')
+
+        # --- Title ---
         title_frame = tk.Frame(self, bg=T.BG_DARK)
         title_frame.pack(side='left', fill='x', expand=True)
-        tk.Label(title_frame, text="PLC COMMUNICATION & SENSOR MONITORING",
-                 bg=T.BG_DARK, fg=T.TEXT_SECONDARY, font=('Tahoma', 12)).pack(side='left')
+        tk.Label(
+            title_frame, text="PLC COMMUNICATION & SENSOR MONITORING",
+            bg=T.BG_DARK, fg=T.TEXT_SECONDARY, font=T.FONT_NORMAL,
+        ).pack(side='left')
+
+        # --- Clock ---
         right_frame = tk.Frame(self, bg=T.BG_DARK)
         right_frame.pack(side='right', padx=T.PADDING_LG)
-        self.clock_label = tk.Label(right_frame, text="--:--:--", bg=T.BG_DARK,
-                                    fg=T.TEXT_PRIMARY, font=('Courier New', 14, 'bold'))
+
+        self.clock_label = tk.Label(
+            right_frame, text="--:--:--", bg=T.BG_DARK,
+            fg=T.TEXT_PRIMARY, font=T.FONT_CLOCK,
+        )
         self.clock_label.pack(anchor='e')
-        self.date_label = tk.Label(right_frame, text="", bg=T.BG_DARK,
-                                   fg=T.TEXT_MUTED, font=T.FONT_SMALL)
+
+        self.date_label = tk.Label(
+            right_frame, text="", bg=T.BG_DARK,
+            fg=T.TEXT_MUTED, font=T.FONT_SMALL,
+        )
         self.date_label.pack(anchor='e')
 
+    def stop(self):
+        """Signal the clock loop to halt."""
+        self._alive = False
+
     def _update_clock(self):
-        now = datetime.now()
-        self.clock_label.config(text=now.strftime('%H:%M:%S'))
-        self.date_label.config(text=now.strftime('%B %d, %Y'))
-        self.after(1000, self._update_clock)
+        if not self._alive:
+            return
+        try:
+            now = datetime.now()
+            self.clock_label.config(text=now.strftime('%H:%M:%S'))
+            self.date_label.config(text=now.strftime('%b %d, %Y'))
+            self.after(1000, self._update_clock)
+        except tk.TclError:
+            self._alive = False
 
 
+# ======================================================================
+# NavigationSidebar
+# ======================================================================
 class NavigationSidebar(tk.Frame):
-    MENU_ITEMS = [('Dashboard', True, None), ('Assets', False, None),
-                  ('Data Monitor', False, None), ('Alarms', False, 2),
-                  ('Trends', False, None), ('Reports', False, None),
-                  ('Settings', False, None)]
+    """Left navigation rail with active-state indicator and hover effects."""
+
+    MENU_ITEMS = [
+        ('Dashboard',    True,  None),
+        ('Assets',       False, None),
+        ('Data Monitor', False, None),
+        ('Alarms',       False, 2),
+        ('Trends',       False, None),
+        ('Reports',      False, None),
+        ('Settings',     False, None),
+    ]
 
     def __init__(self, parent, on_navigate=None, **kwargs):
-        super().__init__(parent, bg=T.BG_NAVY, width=220, **kwargs)
+        super().__init__(parent, bg=T.BG_NAVY, width=240, **kwargs)
         self.pack_propagate(False)
         self.on_navigate = on_navigate
+        self._menu_widgets = {}
+        self._current_active = 'Dashboard'
         self._build_ui()
 
     def _build_ui(self):
-        tk.Label(self, text="NAVIGATION", bg=T.BG_NAVY, fg=T.PRIMARY,
-                 font=T.FONT_TITLE).pack(anchor='w', padx=T.PADDING_MD,
-                                         pady=(T.PADDING_LG, T.PADDING_SM))
+        tk.Label(
+            self, text="NAVIGATION", bg=T.BG_NAVY, fg=T.PRIMARY,
+            font=T.FONT_TITLE,
+        ).pack(anchor='w', padx=T.PADDING_MD, pady=(T.PADDING_LG, T.PADDING_SM))
+
         for name, active, badge in self.MENU_ITEMS:
             self._create_menu_item(name, active, badge)
 
     def _create_menu_item(self, name, active, badge_count=None):
-        bg = T.PRIMARY_DARK if active else T.BG_NAVY
-        fg = T.TEXT_PRIMARY if active else T.TEXT_SECONDARY
-        item = tk.Frame(self, bg=bg, cursor='hand2')
+        bg = T.BG_NAVY
+        fg = T.TEXT_MUTED
+
+        item = tk.Frame(self, bg=bg, cursor='hand2', height=38)
         item.pack(fill='x', padx=T.PADDING_SM, pady=2)
-        name_label = tk.Label(item, text=name, bg=bg, fg=fg, font=T.FONT_NORMAL)
-        name_label.pack(side='left', padx=T.PADDING_MD)
-        if badge_count:
-            Badge(item, text=str(badge_count), color=T.DANGER, size=20).pack(
-                side='right', padx=T.PADDING_SM)
+        item.pack_propagate(False)
+
+        indicator = None
         if active:
-            tk.Frame(item, width=3, bg=T.PRIMARY).pack(side='left', fill='y')
+            indicator = tk.Frame(item, width=3, bg=T.PRIMARY)
+            indicator.place(x=0, y=0, relheight=1)
+            bg = T.PRIMARY_DARK
+            fg = T.TEXT_PRIMARY
 
-        def on_click(e=None):
-            if self.on_navigate:
-                self.on_navigate(name)
+        icon_char = "●" if active else "○"
+        icon_lbl = tk.Label(item, text=icon_char, bg=bg, fg=fg, font=T.FONT_NORMAL)
+        icon_lbl.pack(side='left', padx=(T.PADDING_MD, T.PADDING_SM))
 
-        def on_enter(e):
-            if not active:
+        name_lbl = tk.Label(
+            item, text=name, bg=bg, fg=fg, font=T.FONT_NORMAL, anchor='w',
+        )
+        name_lbl.pack(side='left', fill='x', expand=True, padx=(0, T.PADDING_SM))
+
+        if badge_count:
+            Badge(item, text=str(badge_count), color=T.DANGER, size=18).pack(
+                side='right', padx=(0, T.PADDING_MD),
+            )
+
+        # Store references for dynamic updates
+        self._menu_widgets[name] = {
+            'frame': item,
+            'indicator': indicator,
+            'icon': icon_lbl,
+            'label': name_lbl,
+            'active': active,
+        }
+
+        def on_enter(e, _name=name):
+            current_act = self._menu_widgets[_name]['active']
+            if not current_act:
                 item.config(bg=T.BG_HOVER)
-                name_label.config(bg=T.BG_HOVER)
+                icon_lbl.config(bg=T.BG_HOVER, fg=T.TEXT_SECONDARY)
+                name_lbl.config(bg=T.BG_HOVER, fg=T.TEXT_SECONDARY)
 
-        def on_leave(e):
-            if not active:
+        def on_leave(e, _name=name):
+            current_act = self._menu_widgets[_name]['active']
+            if not current_act:
                 item.config(bg=T.BG_NAVY)
-                name_label.config(bg=T.BG_NAVY)
+                icon_lbl.config(bg=T.BG_NAVY, fg=T.TEXT_MUTED)
+                name_lbl.config(bg=T.BG_NAVY, fg=T.TEXT_MUTED)
 
-        for w in (item, name_label):
+        def on_click(e=None, _name=name):
+            self.set_active(_name)
+            if self.on_navigate:
+                self.on_navigate(_name)
+
+        for w in (item, icon_lbl, name_lbl):
             w.bind('<Button-1>', on_click)
             w.bind('<Enter>', on_enter)
             w.bind('<Leave>', on_leave)
 
+    def set_active(self, name):
+        """Update visual state of menu items."""
+        if name not in self._menu_widgets:
+            return
 
+        for n, widgets in self._menu_widgets.items():
+            is_active = (n == name)
+            widgets['active'] = is_active
+
+            bg = T.PRIMARY_DARK if is_active else T.BG_NAVY
+            fg = T.TEXT_PRIMARY if is_active else T.TEXT_MUTED
+
+            widgets['frame'].config(bg=bg)
+            widgets['icon'].config(bg=bg, fg=fg, text="●" if is_active else "○")
+            widgets['label'].config(bg=bg, fg=fg)
+
+            if is_active:
+                if not widgets['indicator']:
+                    ind = tk.Frame(widgets['frame'], width=3, bg=T.PRIMARY)
+                    ind.place(x=0, y=0, relheight=1)
+                    widgets['indicator'] = ind
+                else:
+                    widgets['indicator'].config(bg=T.PRIMARY)
+            else:
+                if widgets['indicator']:
+                    widgets['indicator'].config(bg=T.BG_NAVY)
+
+
+# ======================================================================
+# MainDashboard
+# ======================================================================
 class MainDashboard(tk.Frame):
-    def __init__(self, parent, client=None, build_info=None, server_mode="", **kwargs):
+    """Central content area: temperature card, chart, log, and right panel."""
+
+    def __init__(self, parent, client=None, build_info=None,
+                 server_mode="", **kwargs):
         super().__init__(parent, bg=T.BG_DARK, **kwargs)
         self.client = client
         self.build_info = build_info or {}
@@ -114,56 +240,84 @@ class MainDashboard(tk.Frame):
         main_area = tk.Frame(self, bg=T.BG_DARK)
         main_area.pack(side='left', fill='both', expand=True, padx=T.PADDING_SM)
 
+        # --- Temperature Card ---
         temp_card = tk.Frame(main_area, bg=T.BG_PANEL)
         temp_card.pack(fill='both', expand=True, pady=(T.PADDING_SM, T.PADDING_SM))
+
         header = tk.Frame(temp_card, bg=T.BG_PANEL)
         header.pack(fill='x', padx=T.PADDING_MD, pady=(T.PADDING_MD, 0))
-        tk.Label(header, text="TEMPERATURE SENSOR 01", bg=T.BG_PANEL,
-                 fg=T.TEXT_PRIMARY, font=T.FONT_TITLE).pack(side='left')
+        tk.Label(
+            header, text="TEMPERATURE SENSOR 01", bg=T.BG_PANEL,
+            fg=T.TEXT_PRIMARY, font=T.FONT_TITLE,
+        ).pack(side='left')
+
         live_badge = tk.Frame(header, bg=T.SUCCESS_DARK)
         live_badge.pack(side='right')
-        tk.Label(live_badge, text="LIVE", bg=T.SUCCESS_DARK, fg=T.SUCCESS,
-                 font=('Tahoma', 10, 'bold'), padx=T.PADDING_SM, pady=2).pack()
+        tk.Label(
+            live_badge, text="LIVE", bg=T.SUCCESS_DARK, fg=T.SUCCESS,
+            font=T.FONT_SMALL, padx=T.PADDING_SM, pady=2,
+        ).pack()
 
+        # Metrics row
         metrics_row = tk.Frame(temp_card, bg=T.BG_PANEL)
         metrics_row.pack(fill='x', padx=T.PADDING_MD, pady=T.PADDING_MD)
-        self.current_temp_metric = MetricDisplay(metrics_row, "Current Temperature",
-                                                 "--", "C", value_color=T.PRIMARY)
+
+        self.current_temp_metric = MetricDisplay(
+            metrics_row, "Current Temperature", "--", "°C", value_color=T.PRIMARY,
+        )
         self.current_temp_metric.pack(side='left', fill='x', expand=True)
-        tk.Frame(metrics_row, width=1, bg=T.BORDER).pack(side='left', fill='y',
-                                                         padx=T.PADDING_MD)
-        self.target_metric = MetricDisplay(metrics_row, "Target Setpoint",
-                                           "--", "C", value_color=T.DANGER)
+
+        tk.Frame(metrics_row, width=1, bg=T.BORDER).pack(
+            side='left', fill='y', padx=T.PADDING_MD,
+        )
+
+        self.target_metric = MetricDisplay(
+            metrics_row, "Target Setpoint", "--", "°C", value_color=T.DANGER,
+        )
         self.target_metric.pack(side='left', fill='x', expand=True)
 
+        # Setpoint control
         ctrl = tk.Frame(temp_card, bg=T.BG_PANEL)
         ctrl.pack(fill='x', padx=T.PADDING_MD, pady=(0, T.PADDING_SM))
-        tk.Label(ctrl, text="Operator Setpoint:", bg=T.BG_PANEL,
-                 fg=T.TEXT_SECONDARY, font=T.FONT_NORMAL).pack(side='left')
-        self.setpoint_var = tk.StringVar(value="65.50")
-        tk.Entry(ctrl, textvariable=self.setpoint_var, width=8,
-                 bg=T.BG_NAVY, fg=T.TEXT_PRIMARY, insertbackground=T.PRIMARY,
-                 font=T.FONT_MONO_NORMAL, relief='flat').pack(side='left', padx=T.PADDING_SM)
-        tk.Button(ctrl, text="APPLY SETPOINT", bg=T.PRIMARY_DARK, fg=T.PRIMARY,
-                  font=T.FONT_SMALL, relief='flat', bd=0, padx=12, pady=4,
-                  command=self.on_setpoint_apply).pack(side='left')
+        tk.Label(
+            ctrl, text="Operator Setpoint:", bg=T.BG_PANEL,
+            fg=T.TEXT_SECONDARY, font=T.FONT_NORMAL,
+        ).pack(side='left')
 
+        self.setpoint_var = tk.StringVar(value="65.50")
+        tk.Entry(
+            ctrl, textvariable=self.setpoint_var, width=8,
+            bg=T.BG_NAVY, fg=T.TEXT_PRIMARY, insertbackground=T.PRIMARY,
+            font=T.FONT_MONO_NORMAL, relief='flat',
+        ).pack(side='left', padx=T.PADDING_SM)
+
+        tk.Button(
+            ctrl, text="APPLY SETPOINT", bg=T.PRIMARY_DARK, fg=T.PRIMARY,
+            font=T.FONT_SMALL, relief='flat', bd=0, padx=12, pady=4,
+            command=self.on_setpoint_apply,
+        ).pack(side='left')
+
+        # Chart
         self.chart = LiveChartWidget(temp_card, setpoint=65.5)
         self.chart.pack(fill='both', expand=True, padx=T.PADDING_MD,
                         pady=(0, T.PADDING_MD))
 
-        log_card = tk.Frame(main_area, bg=T.BG_PANEL, height=200)
+        # Log panel
+        log_card = tk.Frame(main_area, bg=T.BG_PANEL, height=180)
         log_card.pack(fill='x', pady=(0, T.PADDING_SM))
         log_card.pack_propagate(False)
         self.log_widget = LogWidget(log_card, max_entries=50)
         self.log_widget.pack(fill='both', expand=True)
 
-        right_panel = tk.Frame(self, bg=T.BG_DARK, width=320)
+        # --- Right Panel ---
+        # FIX: Increased width from 300 to 420 to prevent text clipping
+        right_panel = tk.Frame(self, bg=T.BG_DARK, width=420)
         right_panel.pack(side='right', fill='y', padx=(0, T.PADDING_SM))
         right_panel.pack_propagate(False)
 
         ForkBuildCard(right_panel, self.build_info, self.server_mode).pack(
-            fill='x', pady=(T.PADDING_SM, T.PADDING_SM))
+            fill='x', pady=(T.PADDING_SM, T.PADDING_SM),
+        )
         self.connection_card = ConnectionCard(right_panel)
         self.connection_card.pack(fill='x', pady=(T.PADDING_SM, T.PADDING_SM))
 
@@ -173,28 +327,46 @@ class MainDashboard(tk.Frame):
         except ValueError:
             self.log_widget.add_entry('WARNING', 'UI', 'Invalid setpoint value')
             return
+
         if self.client:
             try:
                 self.client.write_real(1, DB1_SETPOINT_OFFSET, value)
-                self.log_widget.add_entry('INFO', 'UI',
-                                          f'Setpoint updated to {value:.2f} C in DB1.DBD12')
+                self.log_widget.add_entry(
+                    'INFO', 'UI', f'Setpoint updated to {value:.2f} °C in DB1.DBD12',
+                )
             except Exception as e:
                 self.log_widget.add_entry('ERROR', 'UI', f'Write Setpoint failed: {e}')
         else:
-            self.log_widget.add_entry('WARNING', 'UI', 'No PLC connection - setpoint not applied')
+            self.log_widget.add_entry(
+                'WARNING', 'UI', 'No PLC connection - setpoint not applied',
+            )
 
 
+# ======================================================================
+# SCADADashboard (Root Window)
+# ======================================================================
 class SCADADashboard(tk.Tk):
+    """Application root with safe lifecycle management."""
+
     def __init__(self, client=None, build_info=None, server_mode="",
-                 sensor_sim=None, system_sim=None):
+                 sensor_sim=None, system_sim=None, resolved_font=None):
         super().__init__()
+
         self.client = client
         self.sensor_sim = sensor_sim
         self.system_sim = system_sim
-        self.connect_start = None          # when current connection began
+        self.connect_start = None
         self.on_shutdown = None
         self.build_info = build_info or {}
         self.server_mode = server_mode
+        self._alive = True
+
+        # Apply validated font AND rebuild all font tokens
+        if resolved_font:
+            T.RESOLVED_FONT_FAMILY = resolved_font
+            T._rebuild_font_cache()
+            for _name, _value in T._build_fonts().items():
+                setattr(T, _name, _value)
 
         self.title("S7 SCADA - Industrial Monitoring Suite")
         self.geometry("1400x850")
@@ -205,74 +377,133 @@ class SCADADashboard(tk.Tk):
 
         self._build_ui()
 
-        # Queue and thread for non‑blocking PLC reads
+        # Non-blocking PLC reader via queue
         self._data_q = queue.Queue(maxsize=100)
         self._stop_evt = threading.Event()
         self._reader = None
+
         if self.client is not None:
-            self._reader = threading.Thread(target=self._plc_reader_loop, daemon=True)
+            self._reader = threading.Thread(
+                target=self._plc_reader_loop, daemon=True,
+            )
             self._reader.start()
-            self.drain_queue()                # start UI queue processing
+            self.drain_queue()
         else:
-            # Simulation mode: use old after‑based polling (non‑blocking)
             self.schedule_simulation_poll()
 
+    # ------------------------------------------------------------------ Build
     def _build_ui(self):
-        TopBar(self).pack(fill='x')
+        self._topbar = TopBar(self)
+        self._topbar.pack(fill='x')
+
         main_container = tk.Frame(self, bg=T.BG_DARK)
         main_container.pack(fill='both', expand=True)
-        NavigationSidebar(main_container, on_navigate=self._on_navigate).pack(side='left', fill='y')
-        self.asset_panel = AssetPanel(main_container, on_asset_select=self._on_asset_select)
+
+        # Sidebar with navigation callback
+        self._sidebar = NavigationSidebar(
+            main_container, on_navigate=self._on_navigate,
+        )
+        self._sidebar.pack(side='left', fill='y')
+
+        # Asset Panel
+        self.asset_panel = AssetPanel(
+            main_container, on_asset_select=self._on_asset_select,
+        )
         self.asset_panel.pack(side='left', fill='y', padx=T.PADDING_SM)
-        self.main_dashboard = MainDashboard(main_container, client=self.client,
-                                            build_info=self.build_info,
-                                            server_mode=self.server_mode)
-        self.main_dashboard.pack(side='left', fill='both', expand=True)
+
+        # ViewManager replaces direct MainDashboard packing
+        self.view_manager = ViewManager(main_container)
+        self.view_manager.pack(side='left', fill='both', expand=True)
+
+        # CRITICAL FIX: Create MainDashboard but DO NOT pack/grid/place it here.
+        # It will be managed exclusively by DashboardView using place().
+        self._main_dashboard_widget = MainDashboard(
+            self.view_manager._container, client=self.client,
+            build_info=self.build_info, server_mode=self.server_mode,
+        )
+
+        # Register all views
+        self.view_manager.register(
+            'Dashboard', lambda p: DashboardView(p, inner=self._main_dashboard_widget))
+        self.view_manager.register(
+            'Assets', lambda p: AssetsView(p, asset_panel=self.asset_panel))
+        self.view_manager.register(
+            'Data Monitor', lambda p: DataMonitorView(p))
+        self.view_manager.register(
+            'Alarms', lambda p: AlarmsView(p))
+        self.view_manager.register(
+            'Trends', lambda p: TrendsView(p))
+        self.view_manager.register(
+            'Reports', lambda p: ReportsView(p))
+        self.view_manager.register(
+            'Settings', lambda p: SettingsView(p))
+
+        # Show default view
+        self.view_manager.show('Dashboard')
+
         self.status_bar = SystemStatusBar(self)
         self.status_bar.pack(fill='x', side='bottom')
 
+    # Backward-compatible property
+    @property
+    def main_dashboard(self):
+        return getattr(self, '_main_dashboard_widget', None)
+
+    # ------------------------------------------------------------------ Events
     def _on_navigate(self, name):
-        self.main_dashboard.log_widget.add_entry('INFO', 'NAV', f'Opened view: {name}')
+        if not self._alive:
+            return
+        try:
+            self.view_manager.show(name)
+            self._sidebar.set_active(name)  # FIX: Update sidebar active state
+            if self.main_dashboard:
+                self.main_dashboard.log_widget.add_entry(
+                    'INFO', 'NAV', f'Switched to: {name}')
+        except KeyError as e:
+            print(f"[NAV ERROR] {e}")
 
     def _on_asset_select(self, asset):
-        if hasattr(self, 'main_dashboard'):
-            self.main_dashboard.log_widget.add_entry('INFO', 'UI',
-                                                     f'Selected asset: {asset.name} ({asset.ip})')
+        if not self._alive:
+            return
+        md = self.main_dashboard
+        if md and hasattr(md, 'log_widget'):
+            md.log_widget.add_entry(
+                'INFO', 'UI', f'Selected asset: {asset.name} ({asset.ip})',
+            )
 
-    # ------------------------------------------------------------------
-    # Public logging API (called from external modules)
-    # ------------------------------------------------------------------
     def log_message(self, level, source, message):
-        """Add an entry to the UI log widget from anywhere (e.g., main)."""
-        if hasattr(self, 'main_dashboard') and self.main_dashboard:
-            self.main_dashboard.log_widget.add_entry(level, source, message)
+        """Thread-safe public logging API for external modules."""
+        if not self._alive:
+            return
+        md = self.main_dashboard
+        if md and hasattr(md, 'log_widget'):
+            md.log_widget.add_entry(level, source, message)
 
-    # ------------------------------------------------------------------
-    # Background PLC reader (runs in its own thread)
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------------------ PLC Reader
     def _plc_reader_loop(self):
-        """Read PLC data in a loop and put results into the queue."""
+        """Background thread: reads PLC registers into queue."""
         while not self._stop_evt.is_set():
             try:
                 temp = self.client.read_real(1, DB1_TEMP_OFFSET)
-                cpu  = self.client.read_real(1, DB1_CPU_OFFSET)
-                mem  = self.client.read_real(1, DB1_RAM_OFFSET)
-                sp   = self.client.read_real(1, DB1_SETPOINT_OFFSET)
+                cpu = self.client.read_real(1, DB1_CPU_OFFSET)
+                mem = self.client.read_real(1, DB1_RAM_OFFSET)
+                sp = self.client.read_real(1, DB1_SETPOINT_OFFSET)
                 self._data_q.put_nowait(('ok', (temp, cpu, mem, sp)))
             except queue.Full:
-                pass   # UI is behind, skip this sample
+                pass
             except Exception as e:
                 try:
                     self._data_q.put_nowait(('err', str(e)))
                 except queue.Full:
                     pass
-            self._stop_evt.wait(0.5)   # poll every 500 ms, but can be interrupted
+            self._stop_evt.wait(0.5)
 
-    # ------------------------------------------------------------------
-    # UI thread: drain the queue and update widgets
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------------------ Queue Drain
     def drain_queue(self):
-        """Process the latest PLC data sample from the queue (main thread)."""
+        """Main-thread poll: processes latest PLC sample from queue."""
+        if not self._alive:
+            return
+
         latest = None
         while True:
             try:
@@ -285,68 +516,121 @@ class SCADADashboard(tk.Tk):
             if kind == 'ok':
                 self._apply_sample(payload)
             else:
-                # PLC read error
-                self.main_dashboard.connection_card.set_status(False)
-                self.main_dashboard.log_widget.add_entry('ERROR', 'SNAP7',
-                                                         f'PLC read failed: {payload}')
-                # Reset connection timer so it restarts when we reconnect
+                if self.main_dashboard:
+                    self.main_dashboard.connection_card.set_status(False)
+                    self.main_dashboard.log_widget.add_entry(
+                        'ERROR', 'SNAP7', f'PLC read failed: {payload}',
+                    )
                 self.connect_start = None
 
-        self.after(200, self.drain_queue)   # check queue every 200 ms
+        self.after(200, self.drain_queue)
 
     def _apply_sample(self, data):
-        """Update all UI widgets with a fresh PLC sample (called from main thread)."""
+        """Pushes fresh PLC data into UI widgets."""
+        if not self._alive:
+            return
+
         temp, cpu, mem, setpoint = data
 
-        # Reset connection timer if this is the first sample after an error
         if self.connect_start is None:
             self.connect_start = datetime.now()
 
-        # Update charts and metrics
-        self.main_dashboard.chart.add_point(temp)
-        self.main_dashboard.current_temp_metric.set_value(f"{temp:.2f}")
-        self.main_dashboard.target_metric.set_value(f"{setpoint:.2f}")
+        md = self.main_dashboard
+        if md:
+            md.chart.add_point(temp)
+            md.current_temp_metric.set_value(f"{temp:.2f}")
+            md.target_metric.set_value(f"{setpoint:.2f}")
 
-        # System metrics
+            elapsed = int((datetime.now() - self.connect_start).total_seconds())
+            md.connection_card.set_connection_time(elapsed)
+            md.connection_card.set_status(True)
+
         metrics = self.system_sim.get_metrics() if self.system_sim else {}
         self.status_bar.update_values(
-            temp=temp,
-            cpu=cpu,
-            mem=mem,
+            temp=temp, cpu=cpu, mem=mem,
             net_up=metrics.get('net_up', 0),
             net_down=metrics.get('net_down', 0),
-            uptime_seconds=metrics.get('uptime_seconds', 0)
+            uptime_seconds=metrics.get('uptime_seconds', 0),
         )
 
-        # Connection uptime
-        elapsed = int((datetime.now() - self.connect_start).total_seconds())
-        self.main_dashboard.connection_card.set_connection_time(elapsed)
-        self.main_dashboard.connection_card.set_status(True)
+        # Push live data to other views if they have been instantiated
+        dm_view = self.view_manager._views.get('Data Monitor')
+        if dm_view:
+            dm_view.update_tags({
+                'TEMP_01': {'value': f"{temp:.2f}", 'unit': '°C', 'quality': 'GOOD'}
+            })
 
-    # ------------------------------------------------------------------
-    # Simulation mode (no real PLC)
-    # ------------------------------------------------------------------
+        trends_view = self.view_manager._views.get('Trends')
+        if trends_view:
+            trends_view.push_point('TEMP_01', temp)
+
+    # ------------------------------------------------------------------ Simulation Fallback
     def schedule_simulation_poll(self):
+        if not self._alive:
+            return
         self._simulate_data()
         self.after(500, self.schedule_simulation_poll)
 
     def _simulate_data(self):
-        """Update widgets with simulated data (runs on main thread)."""
+        if not self._alive:
+            return
         value = self.sensor_sim.read() if self.sensor_sim else 65.5
-        self.main_dashboard.chart.add_point(value)
-        self.main_dashboard.current_temp_metric.set_value(f"{value:.2f}")
+        if self.main_dashboard:
+            self.main_dashboard.chart.add_point(value)
+            self.main_dashboard.current_temp_metric.set_value(f"{value:.2f}")
 
-    # ------------------------------------------------------------------
-    # Shutdown
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------------------ Shutdown
     def on_closing(self):
-        """Stop the background thread and destroy the window."""
+        """Deterministic, crash-free shutdown sequence."""
+        self._alive = False
+
+        if hasattr(self, '_topbar'):
+            self._topbar.stop()
+
+        if hasattr(self, 'main_dashboard'):
+            if hasattr(self.main_dashboard, 'chart'):
+                self.main_dashboard.chart.stop()
+
         if self._reader is not None:
             self._stop_evt.set()
             self._reader.join(timeout=2.0)
+
         if self.on_shutdown:
             try:
                 self.on_shutdown()
             except Exception:
                 pass
-        self.destroy()
+
+        try:
+            self.tk.eval('catch {bind . <<ThemeChanged>> ""}')
+            self.tk.eval('''
+                catch {
+                    foreach w [winfo children .] {
+                        catch {bind $w <<ThemeChanged>> ""}
+                    }
+                }
+            ''')
+        except Exception:
+            pass
+
+        try:
+            after_ids = self.tk.eval('after info').split()
+            for aid in after_ids:
+                try:
+                    self.after_cancel(aid)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        try:
+            self.withdraw()
+            self.update_idletasks()
+        except Exception:
+            pass
+
+        try:
+            self.quit()
+            self.destroy()
+        except tk.TclError:
+            pass
