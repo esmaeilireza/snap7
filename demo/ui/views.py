@@ -4,6 +4,7 @@ All views subclass BaseView; grid-based layout; theme constants verified
 against theme.py (FALLBACK covers any constant that might be missing).
 """
 import csv
+import os
 import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import datetime
@@ -113,8 +114,17 @@ class DashboardView(BaseView):
     def __init__(self, parent, inner=None, **kwargs):
         super().__init__(parent, **kwargs)
         self.inner = inner
-        if inner is not None:
-            inner.grid(row=0, column=0, sticky='nsew')
+
+    def on_show(self):
+        # Use place() instead of pack() to avoid geometry manager conflict.
+        # ViewManager uses grid for its children, and MainDashboard uses pack
+        # internally. place() coexists with both without raising TclError.
+        if self.inner:
+            self.inner.place(relx=0, rely=0, relwidth=1, relheight=1)
+
+    def on_hide(self):
+        if self.inner:
+            self.inner.place_forget()
 
 
 class AssetsView(BaseView):
@@ -177,8 +187,12 @@ class AssetsView(BaseView):
         if not self.asset_panel:
             return
         rows = []
-        for name, item in self.asset_panel.assets.items():
-            rows.append((name, item.asset_type, '-', item.status, '-', '-'))
+        # FIX: Safe access to assets dictionary with getattr fallbacks
+        assets_dict = getattr(self.asset_panel, 'assets', {})
+        for name, item in assets_dict.items():
+            atype = getattr(item, 'asset_type', 'Unknown')
+            status = getattr(item, 'status', 'UNKNOWN')
+            rows.append((name, atype, '-', status, '-', '-'))
         self.refresh(rows)
 
     def _render(self):
@@ -411,7 +425,8 @@ class ReportsView(BaseView):
 
     def generate_csv(self):
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-        path = f"/mnt/data/report_{ts}.csv"
+        # FIX: Use current directory instead of hardcoded Linux path
+        path = os.path.join(os.getcwd(), f"report_{ts}.csv")
         rows = []
         try:
             with open(path, 'w', newline='', encoding='utf-8') as f:

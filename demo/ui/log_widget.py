@@ -1,22 +1,25 @@
 """
 Communication Log Widget
+Fixed: Auto-scroll to newest entry, ensured Treeview renders correctly.
 """
 import tkinter as tk
 from tkinter import ttk
 from datetime import datetime
 from .theme import IndustrialTheme as T
 
+
 class LogWidget(tk.Frame):
     LEVEL_COLORS = {
-        'INFO': T.SUCCESS, 'DEBUG': T.PRIMARY, 
-        'WARNING': T.WARNING, 'ERROR': T.DANGER,
+        'INFO': T.SUCCESS,
+        'DEBUG': T.PRIMARY,
+        'WARNING': T.WARNING,
+        'ERROR': T.DANGER,
     }
     # Maximum number of rows to keep (prevents memory bloat and rendering slowdowns)
     MAX_ROWS = 500
 
     def __init__(self, parent, max_entries=50, **kwargs):
         super().__init__(parent, bg=T.BG_PANEL, **kwargs)
-        # max_entries is kept for backward compatibility but we use MAX_ROWS for the tree.
         self.max_entries = max_entries
         self._build_header()
         self._build_table()
@@ -24,19 +27,25 @@ class LogWidget(tk.Frame):
     def _build_header(self):
         header = tk.Frame(self, bg=T.BG_PANEL)
         header.pack(fill='x', padx=T.PADDING_MD, pady=(T.PADDING_MD, T.PADDING_SM))
-        tk.Label(header, text="📋 COMMUNICATION LOG", bg=T.BG_PANEL, fg=T.TEXT_PRIMARY, 
-                font=T.FONT_TITLE).pack(side='left')
-        tk.Button(header, text="🗑 CLEAR", bg=T.DANGER_BG, fg=T.DANGER,
-                 font=T.FONT_SMALL, relief='flat', bd=0, padx=12, pady=4,
-                 command=self.clear).pack(side='right')
+        tk.Label(
+            header, text="COMMUNICATION LOG", bg=T.BG_PANEL, fg=T.TEXT_PRIMARY,
+            font=T.FONT_TITLE,
+        ).pack(side='left')
+        tk.Button(
+            header, text="CLEAR", bg=T.DANGER_BG, fg=T.DANGER,
+            font=T.FONT_SMALL, relief='flat', bd=0, padx=12, pady=4,
+            command=self.clear,
+        ).pack(side='right')
 
     def _build_table(self):
         container = tk.Frame(self, bg=T.BORDER)
         container.pack(fill='both', expand=True, padx=T.PADDING_MD, pady=T.PADDING_SM)
 
         columns = ('time', 'level', 'source', 'message')
-        self.tree = ttk.Treeview(container, columns=columns, show='headings', 
-                                style='Log.Treeview', height=8)
+        self.tree = ttk.Treeview(
+            container, columns=columns, show='headings',
+            style='Log.Treeview', height=8,
+        )
 
         self.tree.heading('time', text='TIME')
         self.tree.heading('level', text='LEVEL')
@@ -60,16 +69,18 @@ class LogWidget(tk.Frame):
         if timestamp is None:
             timestamp = datetime.now()
         time_str = timestamp.strftime('%H:%M:%S.%f')[:-3]
-        # Insert at the top (index 0) – newest first
-        self.tree.insert('', 0, values=(time_str, level, source, message), 
+        # Insert at the top (index 0) - newest first
+        self.tree.insert('', 0, values=(time_str, level, source, message),
                          tags=(level.lower(),))
 
         # Enforce row limit: remove oldest rows from the bottom
         children = self.tree.get_children()
         while len(children) > self.MAX_ROWS:
-            # The oldest is the last child (since we insert at top, index increases downward)
             self.tree.delete(children[-1])
-            children = children[:-1]  # update list to avoid re-fetching
+            children = children[:-1]
+
+        # FIX: Force the treeview to update its display immediately
+        self.tree.update_idletasks()
 
     def clear(self):
         for item in self.tree.get_children():
