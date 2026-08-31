@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+*.egg-info/
+dist/
+*.egg
+.env
+venv/
+env/
+
+# C/C++ Build Artifacts
+*.o
+*.obj
+*.dll
+*.lib
+*.exe
+*.a
+*.so.*
+build/
+bin/
+obj/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.log
+*.tmp
+*_backup/
+
+demo/nul
+demo/instruction.docx
+demo/report_*.csv

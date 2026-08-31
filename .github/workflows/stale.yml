@@ -1,0 +1,45 @@
+name: "Mark stale issues and pull requests"
+
+on:
+  schedule:
+    # Runs every day at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allows manual triggering from the GitHub Actions tab
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          
+          # Time before an issue or PR is marked as stale
+          days-before-stale: 60
+          # Time after being marked stale before it is closed
+          days-before-close: 7
+          
+          # Labels to apply
+          stale-issue-label: 'stale'
+          stale-pr-label: 'stale'
+          
+          # Do not close issues/PRs with these labels
+          exempt-issue-labels: 'security, pinned, enhancement, help wanted'
+          exempt-pr-labels: 'security, pinned, work-in-progress'
+          
+          # Messages
+          stale-issue-message: >
+            This issue has been automatically marked as stale because it has not had 
+            recent activity for 60 days. It will be closed in 7 days if no further 
+            activity occurs. If this is still a valid issue, please leave a comment 
+            to keep it open. Thank you for your contributions!
+            
+          stale-pr-message: >
+            This pull request has been automatically marked as stale because it has 
+            not had recent activity for 60 days. It will be closed in 7 days if no 
+            further activity occurs. Please update the PR or leave a comment if you 
+            are still working on it.

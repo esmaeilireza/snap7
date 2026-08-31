@@ -1,0 +1,48 @@
+name: "CodeQL Analysis"
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  schedule:
+    # Runs every Monday at 06:00 UTC to catch new vulnerabilities
+    - cron: '0 6 * * 1'
+
+jobs:
+  analyze:
+    name: Analyze C/C++
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'c-cpp' ]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: ${{ matrix.language }}
+
+    - name: Build Snap7 Core
+      run: |
+        # Install build dependencies
+        sudo apt-get update
+        sudo apt-get install -y build-essential
+        
+        # Build the library using the verified Linux Makefile
+        cd build/unix
+        make -f x86_64_linux.mk
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:${{ matrix.language }}"
