@@ -45,3 +45,22 @@ demo/instruction.docx
 demo/report_*.csv
 .aider*
 instruction.docx
+
+# Additional build/test outputs
+*.pdb
+*.ilk
+*.exp
+*.manifest
+
+# Python testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Your project-specific backups & cache
+.aider.tags.cache.v4/          # (you have .aider* but this is a directory)
+demo/_backup/                  # (covered by *_backup/ but that's a folder pattern – it works)
+run.log                        # (covered by *.log)
+
+# Possibly ignore generated reports
+demo/report_*.csv              # (you already have report_*.csv)
