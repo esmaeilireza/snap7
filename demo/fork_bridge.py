@@ -8,6 +8,7 @@ every byte travelling over ISO-on-TCP is produced by the fork's own code.
 Both ends of the wire (Srv_* server and Cli_* client) run from the same
 fork-built DLL.
 """
+
 import ctypes
 import hashlib
 import struct
@@ -16,17 +17,17 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-SRV_AREA_DB = 5            # from s7_server.h: const int srvAreaDB = 5
+SRV_AREA_DB = 5  # from s7_server.h: const int srvAreaDB = 5
 DEFAULT_PORT = 102
-P_U16_LOCAL_PORT = 1   # p_u16_LocalPort
+P_U16_LOCAL_PORT = 1  # p_u16_LocalPort
 P_U16_REMOTE_PORT = 2  # p_u16_RemotePort
 # --- DB1 Standardized Memory Map (byte offsets) ---
-DB1_TEMP_OFFSET     = 0    # Real (4B) - Process temperature
-DB1_CPU_OFFSET      = 4    # Real (4B) - CPU usage percent
-DB1_RAM_OFFSET      = 8    # Real (4B) - RAM usage percent
-DB1_SETPOINT_OFFSET = 12   # Real (4B) - Operator setpoint
-DB1_HEARTBEAT_OFFSET= 16   # Byte (1B) - Heartbeat counter 0-255
-         # ISO-on-TCP / S7comm
+DB1_TEMP_OFFSET = 0  # Real (4B) - Process temperature
+DB1_CPU_OFFSET = 4  # Real (4B) - CPU usage percent
+DB1_RAM_OFFSET = 8  # Real (4B) - RAM usage percent
+DB1_SETPOINT_OFFSET = 12  # Real (4B) - Operator setpoint
+DB1_HEARTBEAT_OFFSET = 16  # Byte (1B) - Heartbeat counter 0-255
+# ISO-on-TCP / S7comm
 
 
 class ForkBuildError(RuntimeError):
@@ -55,8 +56,12 @@ def sha256_short(path, n=12):
 
 def git(*args):
     try:
-        out = subprocess.run(["git", "-C", str(REPO_ROOT), *args],
-                             capture_output=True, text=True, timeout=5)
+        out = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), *args],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
         return out.stdout.strip() if out.returncode == 0 else None
     except Exception:
         return None
@@ -82,7 +87,8 @@ class Snap7ForkLibrary:
             raise ForkBuildError(
                 "fork snap7.dll not found.\n"
                 "Build it first (MSYS2 MinGW64):\n"
-                "  cd build/windows/MinGW64 && make")
+                "  cd build/windows/MinGW64 && make"
+            )
         self.cdll = ctypes.CDLL(str(self.path))
         self._prototypes()
 
@@ -94,9 +100,12 @@ class Snap7ForkLibrary:
         L.Cli_Destroy.argtypes = [ctypes.POINTER(V)]
         L.Cli_ConnectTo.argtypes = [V, ctypes.c_char_p, I, I]
         L.Cli_ConnectTo.restype = I
-        L.Cli_Disconnect.argtypes = [V]; L.Cli_Disconnect.restype = I
-        L.Cli_DBRead.argtypes = [V, I, I, I, V]; L.Cli_DBRead.restype = I
-        L.Cli_DBWrite.argtypes = [V, I, I, I, V]; L.Cli_DBWrite.restype = I
+        L.Cli_Disconnect.argtypes = [V]
+        L.Cli_Disconnect.restype = I
+        L.Cli_DBRead.argtypes = [V, I, I, I, V]
+        L.Cli_DBRead.restype = I
+        L.Cli_DBWrite.argtypes = [V, I, I, I, V]
+        L.Cli_DBWrite.restype = I
         L.Cli_GetConnected.argtypes = [V, ctypes.POINTER(I)]
         L.Cli_GetConnected.restype = I
         L.Cli_ErrorText.argtypes = [I, ctypes.c_char_p, I]
@@ -106,13 +115,17 @@ class Snap7ForkLibrary:
         W = ctypes.c_uint16
         L.Srv_RegisterArea.argtypes = [V, I, W, V, I]  # Index is word, before pointer
         L.Srv_RegisterArea.restype = I
-        L.Srv_StartTo.argtypes = [V, ctypes.c_char_p]  # Takes Address string, not port int
+        L.Srv_StartTo.argtypes = [
+            V,
+            ctypes.c_char_p,
+        ]  # Takes Address string, not port int
         L.Srv_StartTo.restype = I
         L.Srv_SetParam.argtypes = [V, I, V]
         L.Srv_SetParam.restype = I
         L.Cli_SetParam.argtypes = [V, I, V]
         L.Cli_SetParam.restype = I
-        L.Srv_Stop.argtypes = [V]; L.Srv_Stop.restype = I
+        L.Srv_Stop.argtypes = [V]
+        L.Srv_Stop.restype = I
         L.Srv_Destroy.argtypes = [ctypes.POINTER(V)]
         # Added for server errors
         L.Srv_ErrorText.argtypes = [I, ctypes.c_char_p, I]
@@ -134,7 +147,7 @@ class ForkServer:
 
     def __init__(self, lib, db_size=256):
         self.lib = lib
-        self.db1 = (ctypes.c_ubyte * db_size)()   # must stay alive
+        self.db1 = (ctypes.c_ubyte * db_size)()  # must stay alive
         self.handle = None
         self.port = None
 
@@ -145,9 +158,13 @@ class ForkServer:
             raise ForkBuildError("Srv_Create returned NULL handle")
 
         # Correct order: AreaCode, Index (word), Pointer, Size
-        rc = L.Srv_RegisterArea(self.handle, SRV_AREA_DB, 1, 
-                                ctypes.cast(self.db1, ctypes.c_void_p), 
-                                ctypes.sizeof(self.db1))
+        rc = L.Srv_RegisterArea(
+            self.handle,
+            SRV_AREA_DB,
+            1,
+            ctypes.cast(self.db1, ctypes.c_void_p),
+            ctypes.sizeof(self.db1),
+        )
         if rc != 0:
             err_msg = self.lib.server_error_text(rc)
             raise ForkBuildError(f"Srv_RegisterArea failed (rc={rc}): {err_msg}")
@@ -157,7 +174,7 @@ class ForkServer:
             p = ctypes.c_uint16(port)
             rc = L.Srv_SetParam(self.handle, P_U16_LOCAL_PORT, ctypes.byref(p))
             if rc != 0:
-                 raise ForkBuildError(f"Srv_SetParam failed: {self.lib.server_error_text(rc)}")
+                raise ForkBuildError(f"Srv_SetParam failed: {self.lib.server_error_text(rc)}")
 
         # Start with Address string
         rc = L.Srv_StartTo(self.handle, address.encode("ascii"))
@@ -184,8 +201,8 @@ class ForkClient:
     """S7 client running from the fork's DLL with configurable timeouts."""
 
     # Snap7 parameter codes for timeouts (verified from snap7.h)
-    P_SEND_TIMEOUT = 4   # p_i32_SendTimeout
-    P_RECV_TIMEOUT = 5   # p_i32_RecvTimeout
+    P_SEND_TIMEOUT = 4  # p_i32_SendTimeout
+    P_RECV_TIMEOUT = 5  # p_i32_RecvTimeout
 
     def __init__(self, lib):
         self.lib = lib
@@ -215,30 +232,30 @@ class ForkClient:
 
     def read_real(self, db, offset):
         buf = (ctypes.c_ubyte * 4)()
-        rc = self.lib.cdll.Cli_DBRead(self.handle, db, offset, 4,
-                                      ctypes.cast(buf, ctypes.c_void_p))
+        rc = self.lib.cdll.Cli_DBRead(self.handle, db, offset, 4, ctypes.cast(buf, ctypes.c_void_p))
         if rc != 0:
             raise ForkBuildError(self.lib.error_text(rc))
-        return struct.unpack(">f", bytes(buf))[0]   # S7 REAL = big-endian IEEE754
+        return struct.unpack(">f", bytes(buf))[0]  # S7 REAL = big-endian IEEE754
 
     def write_real(self, db, offset, value):
         buf = (ctypes.c_ubyte * 4)(*struct.pack(">f", value))
-        rc = self.lib.cdll.Cli_DBWrite(self.handle, db, offset, 4,
-                                       ctypes.cast(buf, ctypes.c_void_p))
+        rc = self.lib.cdll.Cli_DBWrite(
+            self.handle, db, offset, 4, ctypes.cast(buf, ctypes.c_void_p)
+        )
         return rc == 0
 
     def read_byte(self, db, offset):
         buf = (ctypes.c_ubyte * 1)()
-        rc = self.lib.cdll.Cli_DBRead(self.handle, db, offset, 1,
-                                      ctypes.cast(buf, ctypes.c_void_p))
+        rc = self.lib.cdll.Cli_DBRead(self.handle, db, offset, 1, ctypes.cast(buf, ctypes.c_void_p))
         if rc != 0:
             raise ForkBuildError(self.lib.error_text(rc))
         return buf[0]
 
     def write_byte(self, db, offset, value):
         buf = (ctypes.c_ubyte * 1)(int(value) & 0xFF)
-        rc = self.lib.cdll.Cli_DBWrite(self.handle, db, offset, 1,
-                                       ctypes.cast(buf, ctypes.c_void_p))
+        rc = self.lib.cdll.Cli_DBWrite(
+            self.handle, db, offset, 1, ctypes.cast(buf, ctypes.c_void_p)
+        )
         return rc == 0
 
     def close(self):
