@@ -64,3 +64,4 @@ run.log                        # (covered by *.log)
 
 # Possibly ignore generated reports
 demo/report_*.csv              # (you already have report_*.csv)*.rsm
+*.rsm
