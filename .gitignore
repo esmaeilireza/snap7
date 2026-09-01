@@ -43,3 +43,5 @@ Thumbs.db
 demo/nul
 demo/instruction.docx
 demo/report_*.csv
+.aider*
+instruction.docx
