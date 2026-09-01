@@ -1,6 +1,6 @@
 # Snap7 – Industrial Communication Toolkit
 
-[![License: LGPL v3](https://img.shields.io/badge/License-LGPLv3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
+[![License: LGPL v3](https://img.shields.io/badge/License-LGPLv3-blue.svg)](lgpl-3.0.txt)
 [![CI](https://github.com/SCADACS/snap7/actions/workflows/smoke-test.yml/badge.svg)](https://github.com/SCADACS/snap7/actions)
 
 Snap7 is an open-source, multi-platform Ethernet suite that natively connects to Siemens S7 PLCs. This repository is a **community-maintained fork** of the original [Snap7](http://snap7.sourceforge.net/) project, designed to bridge the gap between industrial automation and modern software engineering practices.
@@ -92,8 +92,6 @@ snap7/
 ## 📦 Installation (Pre-built Binaries)
 
 For immediate use, download the latest release package from the [Releases Page](https://github.com/SCADACS/snap7/releases). The archives are portable and require no system-wide installation.
-
-**Platform-Specific Library Locations:**
 
 | Platform       | Architecture | Library Path                          |
 |----------------|--------------|---------------------------------------|
@@ -204,4 +202,3 @@ Contributions are highly encouraged! Whether it's fixing bugs, adding new featur
 
 - **Davide Nardella** and the original Snap7 authors for creating an outstanding and robust foundational library.
 - The **Industrial Automation Community** for continuous feedback, real-world testing, and inspiration.
-```

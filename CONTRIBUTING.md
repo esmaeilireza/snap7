@@ -1,10 +1,15 @@
-# Contributing to Snap7
+# Contributing to Snap7 Fork
 
-Please read our [Security Policy](SECURITY.md) and [Code of Conduct](CODE_OF_CONDUCT.md) before contributing.
+Thank you for your interest in contributing! 
 
-## How to contribute
-- Fork the repository
-- Create a feature branch
-- Submit a Pull Request
+## How to Contribute
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-For more details, see [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
+## Code Standards
+- Follow existing code style
+- Add tests for new features
+- Update documentation as needed
