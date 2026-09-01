@@ -23,7 +23,7 @@ FALLBACK = {
     'FONT_XS': ('Tahoma', 10), 'FONT_SMALL': ('Tahoma', 11),
     'FONT_NORMAL': ('Tahoma', 12), 'FONT_MEDIUM': ('Tahoma', 13),
     'FONT_LARGE': ('Tahoma', 16, 'bold'), 'FONT_TITLE': ('Tahoma', 13, 'bold'),
-    'FONT_MONO_SMALL': ('Courier New', 11), 'FONT_MONO_NORMAL': ('Courier New', 12),
+    'FONT_MONO_SMALL': ('Consolas', 10), 'FONT_MONO_NORMAL': ('Consolas', 11),  # FIX: Changed to Consolas for better alignment
     'PADDING_SM': 8, 'PADDING_MD': 12, 'PADDING_LG': 16,
 }
 
@@ -92,11 +92,17 @@ class ViewManager(tk.Frame):
 def make_tree(parent, columns, widths=None, height=12):
     container = tk.Frame(parent, bg=_c('BORDER'))
     container.grid(sticky='nsew')
+    
+    # FIX: Configure custom style for this tree
+    style = ttk.Style()
+    style.configure('Custom.Treeview', font=_c('FONT_MONO_SMALL'))
+    style.configure('Custom.Treeview.Heading', font=_c('FONT_MONO_SMALL'))
+    
     tree = ttk.Treeview(container, columns=columns, show='headings',
-                        style='Log.Treeview', height=height)
+                        style='Custom.Treeview', height=height)
     for col in columns:
         tree.heading(col, text=col.title(), command=lambda c=col: None)
-        tree.column(col, width=(widths or {}).get(col, 120), anchor='w')
+        tree.column(col, width=(widths or {}).get(col, 120), anchor='w', stretch=True)  # FIX: Added stretch=True
     sb = ttk.Scrollbar(container, orient='vertical', command=tree.yview)
     tree.configure(yscrollcommand=sb.set)
     tree.pack(side='left', fill='both', expand=True)
@@ -107,25 +113,6 @@ def make_tree(parent, columns, widths=None, height=12):
 # ---------------------------------------------------------------------------
 # Views
 # ---------------------------------------------------------------------------
-
-class DashboardView(BaseView):
-    """Wraps the existing MainDashboard widget instance."""
-
-    def __init__(self, parent, inner=None, **kwargs):
-        super().__init__(parent, **kwargs)
-        self.inner = inner
-
-    def on_show(self):
-        # Use place() instead of pack() to avoid geometry manager conflict.
-        # ViewManager uses grid for its children, and MainDashboard uses pack
-        # internally. place() coexists with both without raising TclError.
-        if self.inner:
-            self.inner.place(relx=0, rely=0, relwidth=1, relheight=1)
-
-    def on_hide(self):
-        if self.inner:
-            self.inner.place_forget()
-
 
 class AssetsView(BaseView):
     COLUMNS = ('Tag', 'Type', 'Zone', 'Status', 'Last Value', 'Updated')
@@ -150,14 +137,42 @@ class AssetsView(BaseView):
         tree_frame.grid_rowconfigure(0, weight=1)
         tree_frame.grid_columnconfigure(0, weight=1)
 
+        # FIX: Configure Asset.Treeview style WITH dark theme colors
+        style = ttk.Style()
+        style.configure('Asset.Treeview', 
+                        background=_c('BG_DARK'),      # FIX: Dark background
+                        foreground=_c('TEXT_PRIMARY'), # FIX: Light text
+                        fieldbackground=_c('BG_DARK'), # FIX: Dark field background
+                        font=_c('FONT_MONO_SMALL'),
+                        borderwidth=0,
+                        relief='flat')
+        style.configure('Asset.Treeview.Heading',
+                        background=_c('BG_NAVY'),      # FIX: Dark heading background
+                        foreground=_c('PRIMARY'),      # FIX: Cyan heading text
+                        font=_c('FONT_MONO_SMALL'),
+                        borderwidth=1,
+                        relief='flat')
+        style.map('Asset.Treeview',
+                  background=[('selected', _c('PRIMARY_DARK'))],  # FIX: Selection color
+                  foreground=[('selected', _c('TEXT_PRIMARY'))])
+        style.map('Asset.Treeview.Heading',
+                  background=[('active', _c('BG_HOVER'))])
+        
         self.tree = ttk.Treeview(tree_frame, columns=self.COLUMNS,
-                                 show='headings', style='Log.Treeview', height=14)
-        widths = {'Tag': 140, 'Type': 100, 'Zone': 100, 'Status': 90,
-                  'Last Value': 120, 'Updated': 160}
+                                 show='headings', style='Asset.Treeview', height=14)
+        
+        # FIX: Increased column widths for full text visibility
+        self.tree.column('Tag', width=240, minwidth=200, anchor='w', stretch=True)
+        self.tree.column('Type', width=140, minwidth=120, anchor='w', stretch=True)
+        self.tree.column('Zone', width=100, minwidth=80, anchor='w', stretch=True)
+        self.tree.column('Status', width=140, minwidth=120, anchor='w', stretch=True)
+        self.tree.column('Last Value', width=160, minwidth=140, anchor='w', stretch=True)
+        self.tree.column('Updated', width=180, minwidth=160, anchor='w', stretch=True)
+        
+        # FIX: Explicit heading text
         for col in self.COLUMNS:
-            self.tree.heading(col, text=col,
-                              command=lambda c=col: self._sort_by(c))
-            self.tree.column(col, width=widths[col], anchor='w')
+            self.tree.heading(col, text=col, command=lambda c=col: self._sort_by(c))
+        
         sb = ttk.Scrollbar(tree_frame, orient='vertical', command=self.tree.yview)
         self.tree.configure(yscrollcommand=sb.set)
         self.tree.grid(row=0, column=0, sticky='nsew')
@@ -187,7 +202,6 @@ class AssetsView(BaseView):
         if not self.asset_panel:
             return
         rows = []
-        # FIX: Safe access to assets dictionary with getattr fallbacks
         assets_dict = getattr(self.asset_panel, 'assets', {})
         for name, item in assets_dict.items():
             atype = getattr(item, 'asset_type', 'Unknown')
@@ -220,12 +234,18 @@ class DataMonitorView(BaseView):
         frame.grid(row=1, column=0, sticky='nsew', padx=_c('PADDING_MD'))
         frame.grid_rowconfigure(0, weight=1)
         frame.grid_columnconfigure(0, weight=1)
+        
+        # FIX: Configure dedicated style for DataMonitor tree
+        style = ttk.Style()
+        style.configure('DataMonitor.Treeview', font=_c('FONT_MONO_SMALL'))
+        style.configure('DataMonitor.Treeview.Heading', font=_c('FONT_MONO_SMALL'))
+        
         self.tree = ttk.Treeview(frame, columns=self.COLUMNS, show='headings',
-                                 style='Log.Treeview', height=16)
-        for col, w in (('tag', 160), ('value', 120), ('unit', 80),
+                                 style='DataMonitor.Treeview', height=16)  # FIX: Use dedicated style
+        for col, w in (('tag', 180), ('value', 120), ('unit', 80),  # FIX: Increased tag width from 160 to 180
                        ('quality', 100), ('timestamp', 180)):
             self.tree.heading(col, text=col.upper())
-            self.tree.column(col, width=w, anchor='w')
+            self.tree.column(col, width=w, anchor='w', stretch=True)  # FIX: Added stretch=True
         sb = ttk.Scrollbar(frame, orient='vertical', command=self.tree.yview)
         self.tree.configure(yscrollcommand=sb.set)
         self.tree.grid(row=0, column=0, sticky='nsew')
@@ -268,12 +288,18 @@ class AlarmsView(BaseView):
         frame.grid(row=1, column=0, sticky='nsew', padx=_c('PADDING_MD'))
         frame.grid_rowconfigure(0, weight=1)
         frame.grid_columnconfigure(0, weight=1)
+        
+        # FIX: Configure dedicated style for Alarms tree
+        style = ttk.Style()
+        style.configure('Alarm.Treeview', font=_c('FONT_MONO_SMALL'))
+        style.configure('Alarm.Treeview.Heading', font=_c('FONT_MONO_SMALL'))
+        
         self.tree = ttk.Treeview(frame, columns=self.COLUMNS, show='headings',
-                                 style='Log.Treeview', height=14)
+                                 style='Alarm.Treeview', height=14)  # FIX: Use dedicated style
         for col, w in (('Time', 110), ('Severity', 90), ('Source', 130),
-                       ('Message', 380), ('State', 100)):
+                       ('Message', 400), ('State', 100)):  # FIX: Increased Message width from 380 to 400
             self.tree.heading(col, text=col)
-            self.tree.column(col, width=w, anchor='w')
+            self.tree.column(col, width=w, anchor='w', stretch=True)  # FIX: Added stretch=True
         sb = ttk.Scrollbar(frame, orient='vertical', command=self.tree.yview)
         self.tree.configure(yscrollcommand=sb.set)
         self.tree.grid(row=0, column=0, sticky='nsew')
@@ -297,20 +323,29 @@ class AlarmsView(BaseView):
                   state='ACTIVE', timestamp=None):
         ts = (timestamp or datetime.now()).strftime('%H:%M:%S')
         tag = 'ACKED' if state == 'ACKED' else severity
-        self.tree.insert('', 'end', values=(ts, severity, source, message, state),
-                         tags=(tag,))
+        try:  # FIX: Wrap in try-except to prevent crashes
+            self.tree.insert('', 'end', values=(ts, severity, source, message, state),
+                             tags=(tag,))
+        except tk.TclError:
+            pass
 
     def acknowledge_selected(self):
         for item in self.tree.selection():
-            values = list(self.tree.item(item, 'values'))
-            values[4] = 'ACKED'
-            self.tree.item(item, values=values, tags=('ACKED',))
+            try:  # FIX: Wrap in try-except
+                values = list(self.tree.item(item, 'values'))
+                values[4] = 'ACKED'
+                self.tree.item(item, values=values, tags=('ACKED',))
+            except tk.TclError:
+                pass
 
     def _ack_all(self):
         for item in self.tree.get_children():
-            values = list(self.tree.item(item, 'values'))
-            values[4] = 'ACKED'
-            self.tree.item(item, values=values, tags=('ACKED',))
+            try:  # FIX: Wrap in try-except
+                values = list(self.tree.item(item, 'values'))
+                values[4] = 'ACKED'
+                self.tree.item(item, values=values, tags=('ACKED',))
+            except tk.TclError:
+                pass
 
 
 class TrendsView(BaseView):
@@ -413,11 +448,17 @@ class ReportsView(BaseView):
         frame.grid_rowconfigure(0, weight=1)
         frame.grid_columnconfigure(0, weight=1)
         cols = ('timestamp', 'tag', 'value', 'unit')
+        
+        # FIX: Configure dedicated style for Reports tree
+        style = ttk.Style()
+        style.configure('Report.Treeview', font=_c('FONT_MONO_SMALL'))
+        style.configure('Report.Treeview.Heading', font=_c('FONT_MONO_SMALL'))
+        
         self.tree = ttk.Treeview(frame, columns=cols, show='headings',
-                                 style='Log.Treeview', height=10)
+                                 style='Report.Treeview', height=10)  # FIX: Use dedicated style
         for col, w in (('timestamp', 160), ('tag', 140), ('value', 120), ('unit', 80)):
             self.tree.heading(col, text=col.upper())
-            self.tree.column(col, width=w, anchor='w')
+            self.tree.column(col, width=w, anchor='w', stretch=True)  # FIX: Added stretch=True
         sb = ttk.Scrollbar(frame, orient='vertical', command=self.tree.yview)
         self.tree.configure(yscrollcommand=sb.set)
         self.tree.grid(row=0, column=0, sticky='nsew')
