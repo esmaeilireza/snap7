@@ -93,6 +93,8 @@ snap7/
 
 For immediate use, download the latest release package from the [Releases Page](https://github.com/SCADACS/snap7/releases). The archives are portable and require no system-wide installation.
 
+**Platform-Specific Library Locations:**
+
 | Platform       | Architecture | Library Path                          |
 |----------------|--------------|---------------------------------------|
 | **Windows**    | 32-bit       | `release/Windows/Win32/snap7.dll`     |
