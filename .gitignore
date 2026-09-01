@@ -63,4 +63,4 @@ demo/_backup/                  # (covered by *_backup/ but that's a folder patte
 run.log                        # (covered by *.log)
 
 # Possibly ignore generated reports
-demo/report_*.csv              # (you already have report_*.csv)
+demo/report_*.csv              # (you already have report_*.csv)*.rsm
