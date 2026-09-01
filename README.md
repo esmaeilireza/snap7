@@ -1,261 +1,225 @@
-Here is the complete, cohesive, and professionally structured `README.md` file. It integrates the original project information, the newly added installation guide, the build instructions, the project structure (simplified from your `tree` output for readability), and all the modern improvements you've made to the repository.
-
-You can copy and paste this entire block directly into your `README.md` file.
-
 ```markdown
-# Snap7
+# Snap7 – Industrial Communication Toolkit
 
-This is a fork of http://snap7.sourceforge.net/
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](gpl.txt)
+[![CI](https://github.com/SCADACS/snap7/actions/workflows/smoke-test.yml/badge.svg)](https://github.com/SCADACS/snap7/actions)
 
-This fork focuses on extending the Snap7Server module to support some features helping to implement a software PLC.
-These features are currently:
-* Support for program blocks (up-/download, listing)
-* Some dynamic SZLs
-* Vartable watching
-* Monitor mode
-
-For more details, I refer to the commit history.
-Please note that this fork is currently at version 1.4.0.
-
-Cleanup, more fixes, and documentation will follow.
+This is a **community‑maintained fork** of the original [Snap7](http://snap7.sourceforge.net/) project.  
+It extends the core library with features that make it easier to build **software PLCs, modern SCADA interfaces, and data‑driven industrial applications**.
 
 ---
 
-## License
+## 🎯 Why This Fork?
 
-This repository includes the applicable license texts in the repository root:
+Industrial automation code is often written **without** modern software practices – no version control, no automated testing, no security audits.  
+This fork bridges that gap by adding:
 
-- [GPL license text](gpl.txt)
-- [LGPL v3.0 license text](lgpl-3.0.txt)
+- ✅ **Program block management** – upload, download, and list blocks programmatically.
+- ✅ **Dynamic SZL support** – query system status lists for diagnostics.
+- ✅ **Variable watching & monitor mode** – real‑time debugging.
+- ✅ **A full Python/Tkinter dashboard** – a live SCADA‑like UI with charts, asset tables, and alarms (see below).
 
-Please review the applicable license terms before using, modifying, or redistributing this software.
-
----
-
-## Fork Status
-
-This repository is a community-maintained fork of [SCADACS/snap7](https://github.com/SCADACS/snap7).
-
-The original Snap7 project and its contributors retain credit for the upstream codebase. This fork adds independently maintained documentation, build system modernization, automated testing, security enhancements, and integration improvements.
-
-See the repository history and license texts for applicable notices.
+The goal is to make industrial code **as reliable and maintainable** as modern web applications.
 
 ---
 
-## Project Structure
+## 🚀 Live Dashboard Demo
 
-```text
-snap7/
-├── .github/workflows/      # GitHub Actions CI/CD workflows (Smoke Test, CodeQL, Stale Bot)
-├── build/                  # Build system files and output directories
-│   ├── bin/                # Compiled libraries and binaries (Legacy, win32, win64)
-│   ├── osx/                # macOS makefiles
-│   ├── temp/               # Temporary object files generated during build
-│   ├── unix/               # Linux/Unix makefiles (e.g., x86_64_linux.mk)
-│   └── windows/            # Windows makefiles (MinGW32, MinGW64, Visual Studio)
-├── doc/                    # Original upstream documentation
-├── docs/                   # Additional fork documentation (secure-deployment, industrial-networking)
-├── examples/               # Example applications and integration tests
-│   ├── cpp/                # C++ examples (client, server, loopback_test)
-│   ├── dot.net/            # .NET examples (C#, VB)
-│   ├── pascal/             # Pascal examples
-│   ├── plain-c/            # Plain C examples
-│   └── Step 7/             # Siemens Step 7 integration examples
-├── LabVIEW/                # LabVIEW integration files, sources, and examples
-├── release/                # Pre-compiled binaries and wrappers for distribution
-├── rich-demos/             # Advanced demonstration projects for various platforms (Raspberry Pi, etc.)
-├── src/                    # Core C/C++ source code
-│   ├── core/               # Core protocol implementation (S7 client/server/partner)
-│   ├── lib/                # Library main entry point
-│   └── sys/                # System abstraction layer (platform-specific code)
-├── utility/                # Auxiliary tools (e.g., HMITracer)
-├── SECURITY.md             # Security policy and guidelines
-└── README.md               # This file
-```
+This repository includes a **Python‑based SCADA dashboard** that connects to any Snap7 server (real PLC or simulation).
 
----
-
-## Installation
-
-### Pre-built Binaries
-
-Snap7 provides pre-compiled packages for all supported platforms. The source code (library, examples, and wrappers) is fully multi-platform, so there is a single package for all platforms.
-
-**Download formats:**
-- **7-Zip (.7z)**: Best compression, natively supported by many operating systems
-- **ZIP (.zip)**: For Windows systems
-- **GZip (.gz)**: For Unix systems (Linux, BSD, Solaris)
-
-**No installation required:** Simply unpack `snap7-full-x.y.z` to any directory. All paths inside projects and makefiles are relative, working on both Windows and Unix.
-
-**Pre-compiled examples and rich-demos** are ready to run immediately.
-
-### Platform-Specific Notes
-
-#### Linux/Unix
-After unpacking, copy the correct `libsnap7.so` to `/usr/lib`:
+### Quick Start (Simulation Mode)
 
 ```bash
-# For x86_64 Linux
-sudo cp release/Linux/x86_64/libsnap7.so /usr/lib/
-
-# For ARM boards (Raspberry Pi, BeagleBone, etc.)
-sudo cp release/Linux/arm_v7/libsnap7.so /usr/lib/
+cd demo
+pip install -r requirements.txt   # (if you have a requirements file)
+python scada_dashboard.py --simulate
 ```
-*See `release/deploy.html` for the complete list of libraries divided by OS/distro.*
 
-#### Windows
-The pre-compiled DLLs are located in `release/Windows/`:
-- `Win32/snap7.dll` for 32-bit applications
-- `Win64/snap7.dll` for 64-bit applications
+You’ll see a live dashboard with:
 
-Copy the appropriate DLL to your application directory or to `C:\Windows\System32\`.
+- Real‑time temperature chart
+- Asset table (list of connected PLCs/sensors)
+- Communication log
+- Alarm management
+- Trends and reports
 
-### Linux ARM Boards
+![Dashboard Screenshot](docs/dashboard.png)
 
-Snap7 was successfully built and tested on:
-- **Raspberry Pi** (ARM V6)
-- **Raspberry Pi 2** (ARM V7)
-- **pcDuino** (ARM V7)
-- **BeagleBone Black** (ARM V7)
-- **CubieBoard 2** (ARM V7)
-- **UDOO Quad** (ARM V7)
-
-The `libsnap7.so` files for these boards were **not cross-compiled** but built directly on the boards themselves.
-
-> **Tip for ARM users:** If you download the package directly from an ARM board, you can safely delete all folders relative to Windows/BSD/Solaris and i386/x86_64 Linux to save space on your SD card.
-
-The deployed libraries should run on other same-class Linux boards if they are "standard Linux" based. You can also build from source using the correct makefile (`arm_v6_linux.mk` or `arm_v7_linux.mk`).
-
-Feedback and contributions of libraries for other ARM boards are welcome!
+> *Screenshot placeholder – replace with an actual image of your working dashboard.*
 
 ---
 
-## How to Build
+## 📁 Project Structure (Simplified)
 
-If you prefer to build from source, Snap7 provides Makefiles for various platforms. *Note: This fork includes fixes for modern GCC compatibility (C++11/14 compliance).*
+📦 snap7/
+├── 📂 demo/                          # 🚀 Your custom Python SCADA dashboard
+│   ├── 🐍 scada_dashboard.py         # Main entry point
+│   ├── 🧩 fork_bridge.py             # Snap7 client/server bridge
+│   ├── 📡 sensor_simulator.py        # Simulated PLC data generator
+│   ├── 🧪 test_bridge.py             # Unit tests for the bridge
+│   ├── 🔧 apply_patch_fork.py        # Utility to apply custom patches
+│   ├── ⚙️ run_dashboard.bat          # Windows launcher
+│   ├── 📋 requirements.txt           # Python dependencies
+│   └── 📂 ui/                        # User Interface components
+│       ├── __init__.py
+│       ├── asset_panel.py            # Connected assets list
+│       ├── chart_widget.py           # Live temperature chart
+│       ├── dashboard_ui.py           # Main dashboard layout
+│       ├── log_widget.py             # Communication log
+│       ├── status_cards.py           # System status & connection cards
+│       ├── theme.py                  # Dark industrial color theme
+│       ├── views.py                  # ViewManager + all views
+│       └── widgets.py                # Reusable UI widgets (LEDs, badges, etc.)
+
+├── 📂 src/                           # 🔧 Core Snap7 C++ source code
+│   ├── 📂 core/                      # S7 protocol implementation
+│   │   ├── s7_client.cpp/h
+│   │   ├── s7_server.cpp/h
+│   │   ├── s7_partner.cpp/h
+│   │   ├── s7_peer.cpp/h
+│   │   ├── s7_isotcp.cpp/h
+│   │   ├── s7_micro_client.cpp/h
+│   │   ├── s7_text.cpp/h
+│   │   └── s7_types.h
+│   ├── 📂 lib/                       # Library entry point
+│   │   ├── snap7.def
+│   │   ├── snap7_libmain.cpp
+│   │   └── snap7_libmain.h
+│   └── 📂 sys/                       # Platform abstraction layer
+│       ├── snap_msgsock.cpp/h
+│       ├── snap_sysutils.cpp/h
+│       ├── snap_tcpsrvr.cpp/h
+│       ├── snap_threads.cpp/h
+│       ├── sol_threads.h
+│       ├── unix_threads.h
+│       └── win_threads.h
+
+├── 📂 docs/                          # 📖 Additional documentation
+│   ├── secure-deployment.md
+│   └── industrial-networking.md
+
+├── 📄 README.md                      # Project overview & quick start
+├── 📄 SECURITY.md                    # Security guidelines
+├── 📄 gpl.txt                        # GPL license text
+├── 📄 lgpl-3.0.txt                   # LGPLv3 license text
+├── 📄 HISTORY.txt                    # Version history
+├── 📄 .gitignore                     # Ignored files for Git
+├── 🔧 win-clean.bat                  # Clean build artifacts (Windows)
+├── 🔧 final_fix.sh                   # Final touch-up script (Linux/macOS)
+└── 📂 tools/                         # (optional) Auxiliary scripts
+```
+
+---
+
+## 📦 Installation
+
+### Pre‑built Binaries
+
+Download the latest release package from the [Releases](https://github.com/SCADACS/snap7/releases) page.  
+Unpack the archive – no installation required; all paths are relative.
+
+**Platform‑specific files:**
+
+| Platform | Library Location |
+|----------|------------------|
+| Windows 32‑bit | `release/Windows/Win32/snap7.dll` |
+| Windows 64‑bit | `release/Windows/Win64/snap7.dll` |
+| Linux x86_64   | `release/Linux/x86_64/libsnap7.so` |
+| ARMv7 (RPi)    | `release/Linux/arm_v7/libsnap7.so` |
+
+Copy the appropriate library to your system library path or to your application directory.
+
+---
+
+## 🔧 Building from Source
 
 ### Prerequisites
 
-**Linux (Ubuntu/Debian):**
-```bash
-sudo apt-get update
-sudo apt-get install -y build-essential
-```
+- **Linux (Ubuntu/Debian)**: `sudo apt-get install build-essential`
+- **Windows (MSYS2)**: Install [MSYS2](https://www.msys2.org/), then run:
 
-**Windows:**
-Install [MSYS2](https://www.msys2.org/) and open the "MSYS2 MinGW x64" terminal:
-```bash
-pacman -S --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-binutils make
-```
+  ```bash
+  pacman -S --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-binutils make
+  ```
 
-### Building the Core Library
+### Build the Core Library
 
-**Linux:**
-```bash
-cd build/unix
-make -f x86_64_linux.mk
-```
-*Output:* `build/bin/x86_64-linux/libsnap7.so`
+- **Linux**:
 
-**Windows (MinGW64):**
+  ```bash
+  cd build/unix
+  make -f x86_64_linux.mk
+  ```
+
+- **Windows (MinGW64)**:
+
+  ```bash
+  cd build/windows/MinGW64
+  make
+  ```
+
+### Build & Run the Loopback Test
+
 ```bash
-cd build/windows/MinGW64
+cd examples/cpp/<your-platform>
 make
-```
-*Output:* `build/bin/Legacy/win64/snap7.dll` and `snap7.lib`
-
-### Building Examples
-
-**Linux:**
-```bash
-cd examples/cpp/x86_64-linux
-make
-```
-
-**Windows:**
-```bash
-cd examples/cpp/win64
-make
-```
-
-### Running the Loopback Test
-
-The loopback test verifies client-server communication locally.
-
-**Linux:**
-```bash
-cd examples/cpp/x86_64-linux
-export LD_LIBRARY_PATH=../../../build/bin/x86_64-linux:$LD_LIBRARY_PATH
 ./loopback_test
 ```
 
-**Windows:**
-```bash
-cd examples/cpp/win64
-./loopback_test.exe
-```
-
 ---
 
-## Using the Wrappers
+## 🔌 Using the Python Wrapper
 
-Modern language wrappers are provided to simplify integration.
-
-### Python Wrapper
+The easiest way to interact with Snap7 from Python is to use the included dashboard code as a reference.  
+A simple client example:
 
 ```python
-from packages.python.snap7_wrapper import Snap7Client
+from demo.fork_bridge import ForkClient  # or use the original snap7 library
 
-client = Snap7Client()
-client.connect("192.168.1.1", 0, 1)  # IP, rack, slot
-data = client.db_read(1, 0, 100)     # DB number, start, size
+client = ForkClient()
+client.connect("192.168.1.1", 0, 1)
+data = client.db_read(1, 0, 100)
 client.disconnect()
 ```
 
-### Node.js Wrapper
-
-```javascript
-const Snap7Client = require('./packages/node');
-
-const client = new Snap7Client();
-client.connect("192.168.1.1", 0, 1);
-const data = client.dbRead(1, 0, 100);
-client.disconnect();
-```
+For a full‑featured UI, run the dashboard as described above.
 
 ---
 
-## Continuous Integration
+##  Continuous Integration
 
-This project uses GitHub Actions for automated testing and quality assurance:
+GitHub Actions automates:
 
-- **Smoke Test**: Builds the library and runs loopback tests on both Ubuntu and Windows (MSYS2/MinGW64).
-- **Cross-Platform Build**: Verifies compilation across multiple target environments.
-- **CodeQL**: Automated static code analysis for C/C++ security vulnerabilities.
-- **Stale Bot**: Automatically manages inactive issues and pull requests to keep the project backlog clean.
-
-All workflows run automatically on every push and pull request to the `master` branch.
+- **Smoke tests** – builds and runs loopback tests on Ubuntu & Windows.
+- **CodeQL** – security and quality analysis for C/C++.
+- **Stale bot** – keeps the issue tracker tidy.
 
 ---
 
-## Security
+## 🔐 Security
 
-For security considerations when deploying Snap7 in industrial environments, please refer to:
+When deploying in industrial environments, please review:
+
 - [SECURITY.md](SECURITY.md)
 - [docs/secure-deployment.md](docs/secure-deployment.md)
 - [docs/industrial-networking.md](docs/industrial-networking.md)
-```
 
-### Next Steps to Apply:
-1. Open your `README.md` file in your preferred editor (or use `cat > README.md << 'EOF'` in Git Bash).
-2. Paste the entire content above.
-3. Save the file.
-4. Commit and push the update:
-   ```bash
-   git add README.md
-   git commit -m "docs: restructure README with project layout, build instructions, and installation guide"
-   git push origin ci/fix-smoke-test-build-paths
-   ```
+---
 
-This provides a world-class, professional documentation experience for anyone visiting your repository.
+## 📄 License
+
+This project is licensed under the **GNU Lesser General Public License v3.0** – see the [LGPL-3.0](lgpl-3.0.txt) and [GPL](gpl.txt) files for details.
+
+---
+
+## 🙌 Contributing
+
+Contributions are welcome!  
+Please open an issue or pull request for bug fixes, new features, or documentation improvements.
+
+---
+
+## 🌐 Acknowledgments
+
+- Original Snap7 authors – for the excellent library.
+- The industrial automation community – for real‑world feedback and inspiration.
