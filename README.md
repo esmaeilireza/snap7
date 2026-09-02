@@ -1,177 +1,197 @@
-# Snap7 Qt Monitor & Diagnostic Station
+# Snap7 – Industrial Ethernet Communication Suite (Extended Fork)
 
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](LICENSE)
-[![Python: 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)]()
-[![Framework: PySide6](https://img.shields.io/badge/Framework-PySide6%20(Qt6)-green.svg)]()
-[![Platform: Windows | Linux](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey.svg)]()
+[![CI](https://github.com/esmaeilireza/snap7/actions/workflows/build.yml/badge.svg)](https://github.com/esmaeilireza/snap7/actions)
+[![C++](https://img.shields.io/badge/Language-C%2B%2B%20%7C%20C%20%7C%20Python-orange.svg)]()
 
-A high-performance, asynchronous desktop HMI and commissioning workbench for Siemens S7 PLCs, built with **PySide6 (Qt for Python)** and powered by the **Snap7** communication suite.
+**Snap7** is an open-source, 32/64-bit multi-platform Ethernet communication suite designed for native interfacing with Siemens S7 PLCs (S7-200, S7-300, S7-400, S7-1200, and S7-1500).
 
-Designed for automation engineers and field technicians to monitor, test, and validate PLC Data Blocks (DB) during commissioning—without requiring heavy engineering suites (such as TIA Portal or Step 7).
-
----
-
-## 📸 Overview
-
-![HMI Monitor Screenshot](demo/screenshot.png)
+This repository is an **extended, community-maintained fork** of the original Snap7 project by Davide Nardella. It maintains full compatibility with the core C/C++ engine while introducing modern build toolchain fixes, continuous integration, typed Python wrappers, and a desktop diagnostic HMI workbench for rapid field commissioning.
 
 ---
 
-## ⚙️ Key Capabilities
+## 🎯 Fork Enhancements & Additions
 
-* **Asynchronous Polling Engine:** Background cyclic polling via dedicated worker threads (`QThread`), preventing UI freeze during heavy traffic or network delays.
-* **Real-Time Data Block Decoding:** Live reading and structured parsing of S7 Data Blocks supporting standard types (`BOOL`, `INT`, `DINT`, `REAL`).
-* **Hardware-Free Simulation:** Built-in dynamic mock server for offline commissioning, loopback testing, and UI demonstration without physical hardware.
-* **Automatic Failover & Reconnection:** Graceful degradation to loopback simulation upon communication loss, with auto-recovery on link restoration.
-* **High-Rate Telemetry Visualization:** Low-overhead, hardware-accelerated time-series plotting powered by `pyqtgraph`.
-* **Diagnostic Console:** Color-coded protocol telemetry, time-stamped status messages, and operational event logging.
-* **Persistent Configuration:** Quick runtime configuration for PLC Target IP, Rack, Slot, DB numbers, and update cycle intervals (`config.ini`).
+While preserving the zero-dependency, high-performance C/C++ core, this fork adds:
 
----
-
-## 🏗️ Architecture
-
-The application cleanly decouples communication drivers from UI rendering to ensure deterministic polling and responsive operator controls:
-
-
-```
-
-┌─────────────────────────────────────────────────────────────┐
-│                      PySide6 UI Layer                       │
-│  (Views, Hardware-Accelerated Charts, Telemetry Cards)     │
-└──────────────────────────────▲──────────────────────────────┘
-│ Qt Signals / Slots
-┌──────────────────────────────▼──────────────────────────────┐
-│                    Worker Thread Engine                     │
-│  (Non-blocking cyclic task, setpoint dispatch, watchdog)    │
-└──────────────────────────────▲──────────────────────────────┘
-│ C-types ABI
-┌──────────────────────────────▼──────────────────────────────┐
-│                     Snap7 Native Driver                     │
-│               (snap7.dll / libsnap7.so)                     │
-└──────────────────────────────▲──────────────────────────────┘
-│ ISO-on-TCP (RFC 1006 / S7comm)
-▼
-Siemens PLC / Mock Server
-
-```
+* **Toolchain & Build Modernization:** Cleaned MinGW-w64 Makefiles, resolved hardcoded linking paths, and fixed 64-bit integer type issues on modern Windows toolchains.
+* **Continuous Integration & Security:** GitHub Actions workflows for automated loopback smoke tests and CodeQL static security analysis.
+* **Extended Python Bridge (`demo/fork_bridge.py`):** High-level client wrapper providing typed reads/writes (`REAL`, `INT`, `DINT`, `BOOL`), dynamic SZL parsing, and automated connection management.
+* **Dynamic S7 Mock Server (`demo/snap7_server.py`):** Multi-threaded local S7 server with auto-updating Data Blocks (DB1) for offline testing without physical PLC hardware.
+* **Modern Diagnostic Station (`demo/`):** PySide6 (Qt) commissioning HMI featuring real-time hardware-accelerated telemetry, connection failover, and protocol event logging.
 
 ---
 
-## 🔌 PLC Compatibility
+## 🖥️ Diagnostic HMI & Commissioning Workbench
 
-Compatible with any Siemens PLC supporting S7comm over ISO-on-TCP:
+Located in the `demo/` directory, this tool allows automation engineers and developers to test, monitor, and validate S7 communication without installing Step 7 or TIA Portal.
 
-* **S7-300 / S7-400 / WinAC:** Full native support.
-* **S7-1200 / S7-1500:** Supported with optimized block access disabled (Standard DB) and **"Permit access with PUT/GET communication"** enabled in the CPU hardware configuration.
-* **Snap7 Mock Server:** Built-in loopback support.
+![Diagnostic Workbench Preview](demo/screenshot.png)
 
----
+### Key Capabilities
 
-## 🚀 Quick Start
+| Capability | Description |
+| :--- | :--- |
+| **Telemetry Dashboard** | Real-time polling and visualization of process metrics and system status |
+| **High-Rate Plotting** | Low-overhead, hardware-accelerated time-series graphing powered by `pyqtgraph` |
+| **Dynamic Failover** | Automatic fallback to the built-in simulator upon communication timeout |
+| **Protocol Event Logging** | Structured, timestamped communication terminal with status codes |
+| **Runtime Configuration** | Persistent settings (`config.ini`) for Target IP, Rack, Slot, Port, and Polling Rates |
 
-### 1. Prerequisites
-
-* Python **3.10** or higher.
-* Compatible OS: Windows 10/11 (x64) or Linux (x86_64).
-
-### 2. Installation
-
-Clone the repository and install required dependencies:
+### Quick Start (Demo Workbench)
 
 ```bash
-git clone [https://github.com/esmaeilireza/snap7-qt-monitor.git](https://github.com/esmaeilireza/snap7-qt-monitor.git)
-cd snap7-qt-monitor
+cd demo
 pip install -r requirements.txt
 
 ```
 
-### 3. Running in Simulation Mode (Offline)
-
-Test the dashboard immediately without hardware:
-
+* **Run in Simulation Mode (No hardware required):**
 ```bash
 python scada_dashboard.py --simulate
 
 ```
 
-### 4. Running with the Dynamic Mock Server
 
-Start the local mock server to simulate changing PLC registers:
-
+* **Run with the Dynamic Mock Server:**
 ```bash
+# Terminal 1: Start local S7 server
 python snap7_server.py
 
-```
-
-In a separate terminal, start the monitor station:
-
-```bash
+# Terminal 2: Launch diagnostic client
 python scada_dashboard.py
 
 ```
 
-Set the IP address to `127.0.0.1` (Rack: `0`, Slot: `2`) within the Settings tab to bind to the local server.
+
 
 ---
 
-## 📁 Repository Structure
+## 🔌 Python Client Quick Example
 
-```
-snap7-qt-monitor/
-├── scada_dashboard.py       # Main application entry point
-├── fork_bridge.py           # Typed Snap7 Python bridge & client abstraction
-├── sensor_simulator.py      # Dynamic process variable generator
-├── snap7_server.py          # Standalone S7 mock server (DB1 emulation)
-├── test_bridge.py           # Unit tests and loopback validation
-├── requirements.txt         # Runtime dependencies
-├── config.ini               # Runtime persistent configuration
-├── ui/                      # Modular UI components
-│   ├── dashboard_ui.py      # Main window and layout orchestration
-│   ├── chart_widget.py      # pyqtgraph real-time telemetry plotting
-│   ├── status_cards.py      # KPI cards & state indicators
-│   ├── asset_panel.py       # Station topology & target selector
-│   ├── log_widget.py        # Real-time event & diagnostic terminal
-│   ├── theme.py             # Dark industrial design palette
-│   └── widgets.py           # Base UI primitives & controls
-└── LICENSE                  # LGPL-3.0 license
+The Python bridge (`demo/fork_bridge.py`) wraps the native library for rapid scripting:
+
+```python
+from demo.fork_bridge import ForkClient
+
+client = ForkClient()
+client.connect("192.168.0.1", rack=0, slot=1)
+
+# Read 100 bytes from DB1 starting at offset 0
+raw_bytes = client.db_read(db_number=1, start=0, size=100)
+
+# Typed read (e.g., REAL at offset 4)
+temp_value = client.read_real(db_number=1, offset=4)
+print(f"Temperature: {temp_value:.2f} °C")
+
+client.disconnect()
 
 ```
 
 ---
 
-## 🛠️ Configuration Guide
+## 📦 Pre-built Binaries
 
-Default parameters can be adjusted via the UI Settings panel or directly in `config.ini`:
+Pre-compiled native binaries are located in the repository:
 
-```ini
-[PLC]
-ip = 192.168.0.1
-rack = 0
-slot = 1
-port = 102
-polling_interval_ms = 100
+| Platform | Architecture | Library Path |
+| --- | --- | --- |
+| **Windows** | 32-bit (x86) | `release/Windows/Win32/snap7.dll` |
+| **Windows** | 64-bit (x64) | `release/Windows/Win64/snap7.dll` |
+| **Linux** | 64-bit (x86_64) | `release/Linux/x86_64/libsnap7.so` |
+| **Linux** | ARMv7 (RPi / Embedded) | `release/Linux/arm_v7/libsnap7.so` |
 
-[MAPPING]
-db_number = 1
-start_offset = 0
-size = 64
+---
+
+## 🔧 Building the Core C/C++ Library from Source
+
+### Prerequisites
+
+* **Linux (Debian/Ubuntu):**
+```bash
+sudo apt-get update && sudo apt-get install build-essential
 
 ```
+
+
+* **Windows:** MSYS2 with `mingw-w64-x86_64-gcc` and `make`.
+
+### Compilation
+
+* **Linux (x86_64):**
+```bash
+cd build/unix
+make -f x86_64_linux.mk
+
+```
+
+
+* **Windows (MinGW-w64):**
+```bash
+cd build/windows/MinGW64
+make
+
+```
+
+
+
+### Running Loopback Verification
+
+```bash
+cd examples/cpp/<platform>
+make
+./loopback_test
+
+```
+
+---
+
+## 📁 Repository Layout
+
+```
+snap7/
+├── demo/                   # Extended tooling, Python bridge, and Qt diagnostic HMI
+│   ├── scada_dashboard.py  # Diagnostic station main executable
+│   ├── fork_bridge.py      # High-level typed Snap7 Python wrapper
+│   ├── snap7_server.py     # Standalone dynamic mock server
+│   ├── sensor_simulator.py # Process metric generator
+│   └── ui/                 # PySide6 layout components and design tokens
+├── src/                    # Core Snap7 C/C++ source code
+│   ├── core/               # ISO-on-TCP and S7 protocol stack
+│   ├── lib/                # API exports (snap7.def, libmain)
+│   └── sys/                # OS abstraction layer (sockets, threads)
+├── build/                  # Makefiles for Linux, Windows, macOS, BSD, and Solaris
+├── examples/               # Native examples (C/C++, C#, Pascal, LabVIEW)
+├── docs/                   # Deployment guides and network architecture notes
+├── SECURITY.md             # Security policy and vulnerability disclosure
+└── LICENSE                 # LGPL-3.0 License
+
+```
+
+---
+
+## 🔐 Industrial Deployment & Security
+
+Deploying software directly onto OT/ICS networks requires strict operational measures:
+
+* Restrict access to S7 TCP Port `102` using managed industrial firewalls or VLAN segmentation.
+* Note that legacy S7comm is an unencrypted, unauthenticated protocol; do not route raw S7 traffic across untrusted or public networks.
+* Refer to [docs/secure-deployment.md](https://www.google.com/search?q=docs/secure-deployment.md) for network hardening guidelines.
 
 ---
 
 ## 📄 License
 
-This project is licensed under the **GNU Lesser General Public License v3.0 (LGPLv3)** - see the [LICENSE](https://www.google.com/search?q=LICENSE) file for details.
+This project is licensed under the **GNU Lesser General Public License v3.0 (LGPLv3)**.
+
+See [LICENSE](https://www.google.com/search?q=LICENSE) and [lgpl-3.0.txt](https://www.google.com/search?q=lgpl-3.0.txt) for details.
 
 ---
 
-## 🙏 Acknowledgments
+## 🌐 Acknowledgments
 
-* **Davide Nardella** for designing and maintaining the foundational [Snap7](https://www.google.com/search?q=https://snap7.sourceforge.net/) Ethernet communication library.
-* The **Qt Company** for PySide6.
-* The **pyqtgraph** team for providing low-overhead data visualization tools.
+* **Davide Nardella** – Creator and lead developer of the foundational [Snap7](https://www.google.com/search?q=https://snap7.sourceforge.net/) library.
+* The **Open-Source Industrial Automation Community** for testing, protocol validation, and continuous field feedback.
 
 ```
 
