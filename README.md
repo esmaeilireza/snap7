@@ -194,5 +194,3 @@ See [LICENSE](https://www.google.com/search?q=LICENSE) and [lgpl-3.0.txt](https:
 * The **Open-Source Industrial Automation Community** for testing, protocol validation, and continuous field feedback.
 
 ```
-
-```
