@@ -1,246 +1,218 @@
+# demo/ui/theme.py
 """
-S7 SCADA Industrial Theme
-Unified color palette + dynamic font resolution + ttk style configuration.
+Design Tokens & QSS Stylesheets – Immutable Visual Specification.
+Provides all colors, fonts, and global styles for the PySide6 desktop dashboard.
+
+Version: 2.4.1
+Compliant with the visual specification (dark industrial theme).
 """
 
-from tkinter import ttk
+# ======================== COLOR TOKENS ========================
+COLOR_BG_DEEP = "#0a0e14"          # deepest background (header, sidebar, footer)
+COLOR_PANEL = "#121a28"            # card/panel background
+COLOR_BORDER = "#1d2836"           # hairline borders
+COLOR_ACCENT = "#00c2ff"           # primary cyan accent
+COLOR_ACCENT_SOFT = "#7dd3fc"      # lighter cyan (slider thumb, etc.)
+COLOR_AMBER = "#eab308"            # warning/setpoint color
+COLOR_GREEN = "#22c55e"            # healthy status
+COLOR_RED = "#ef4444"              # error/disconnected
+COLOR_TEXT_PRIMARY = "#f1f5f9"     # near-white text
+COLOR_TEXT_SECONDARY = "#94a3b8"   # grey labels
+COLOR_TEXT_FAINT = "#64748b"       # dim metadata
+COLOR_TERMINAL_BG = "#080b10"      # log panel background
+COLOR_CHART_GRID = "#1c2634"       # faint grid lines
+COLOR_ACTIVE_NAV = "#1a2433"       # active sidebar item background
 
+# ======================== TYPOGRAPHY ========================
+FONT_UI = "'Inter', 'Segoe UI', sans-serif"
+FONT_MONO = "'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace"
 
-class IndustrialTheme:
-    # ==================================================================
-    # Color Palette
-    # ==================================================================
-    # Backgrounds (layered for visual depth)
-    BG_DARK = "#0B1120"  # Main application background
-    BG_NAVY = "#151E32"  # Sidebar / navigation rail
-    BG_PANEL = "#1E293B"  # Card / widget surface
-    BG_HOVER = "#334155"  # Interactive hover state
+# ======================== GLOBAL QSS ========================
+GLOBAL_QSS = f"""
+/* Reset */
+QWidget {{
+    background-color: {COLOR_BG_DEEP};
+    color: {COLOR_TEXT_PRIMARY};
+    font-family: {FONT_UI};
+    border: none;
+    outline: none;
+}}
 
-    # Primary accent
-    PRIMARY = "#38BDF8"
-    PRIMARY_NEON = "#0EA5E9"
-    PRIMARY_DARK = "#0C4A6E"
-    PRIMARY_GLOW = "#7DD3FC"
+/* Panels (cards) */
+QFrame.panel {{
+    background-color: {COLOR_PANEL};
+    border: 1px solid {COLOR_BORDER};
+    border-radius: 8px;
+    padding: 20px;
+}}
 
-    # Semantic colors
-    SUCCESS = "#22C55E"
-    SUCCESS_DARK = "#14532D"
-    WARNING = "#F59E0B"
-    DANGER = "#EF4444"
-    DANGER_BG = "#450A0A"
+/* Labels */
+QLabel {{
+    background: transparent;
+    color: {COLOR_TEXT_PRIMARY};
+}}
 
-    # Text hierarchy
-    TEXT_PRIMARY = "#F1F5F9"  # High‑emphasis (WCAG AA on BG_DARK/BG_NAVY)
-    TEXT_SECONDARY = "#94A3B8"  # Medium‑emphasis
-    TEXT_MUTED = "#64748B"  # Low‑emphasis / placeholders
-    TEXT_DIM = "#475569"  # Minimal / disabled
+QLabel.title {{
+    font-size: 16px;
+    font-weight: 600;
+    color: {COLOR_TEXT_PRIMARY};
+}}
 
-    # Borders
-    BORDER = "#334155"
-    BORDER_ACTIVE = "#38BDF8"
+QLabel.kpi-value {{
+    font-size: 46px;
+    font-weight: 600;
+    color: {COLOR_TEXT_PRIMARY};
+    line-height: 1;
+    padding: 0;
+    margin: 0;
+}}
 
-    # Spacing scale (px)
-    PADDING_SM = 6
-    PADDING_MD = 10
-    PADDING_LG = 14
+QLabel.kpi-unit {{
+    font-size: 20px;
+    font-weight: 400;
+    color: {COLOR_TEXT_SECONDARY};
+    padding-top: 12px;  /* baseline alignment */
+}}
 
-    # ==================================================================
-    # Dynamic Font System
-    # ==================================================================
-    # 🔧 Overridden at runtime by scada_dashboard._resolve_font_family()
-    RESOLVED_FONT_FAMILY = "Segoe UI Variable"
-    MONO_FAMILY = "Consolas"
+QLabel.meta {{
+    font-size: 12px;
+    color: #8b98a9;
+    font-family: {FONT_MONO};
+}}
 
-    @classmethod
-    def _font(cls, size, weight="normal"):
-        """Build a font tuple using the resolved proportional family."""
-        return (cls.RESOLVED_FONT_FAMILY, size, weight)
+/* Input field for sensor setpoint */
+QLineEdit.sim-input {{
+    background-color: #0d1420;
+    border: 1px solid {COLOR_BORDER};
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-family: {FONT_MONO};
+    font-size: 14px;
+    color: {COLOR_TEXT_PRIMARY};
+}}
 
-    @classmethod
-    def _mono(cls, size, weight="normal"):
-        """Build a font tuple using the monospace family."""
-        return (cls.MONO_FAMILY, size, weight)
+QLineEdit.sim-input:focus {{
+    border: 1px solid {COLOR_ACCENT};
+}}
 
-    @classmethod
-    def _build_fonts(cls):
-        """Build all font tuples using current RESOLVED_FONT_FAMILY."""
-        f = cls._font
-        m = cls._mono
-        return {
-            "FONT_XS": f(9),
-            "FONT_SMALL": f(10),
-            "FONT_NORMAL": f(11),
-            "FONT_MEDIUM": f(12),
-            "FONT_LARGE": f(14),
-            "FONT_XXL": f(28),
-            "FONT_TITLE": f(11, "bold"),
-            "FONT_SUBTITLE": f(14),
-            "FONT_LOGO": f(20, "bold"),
-            "FONT_MONO": m(10),
-            "FONT_MONO_SMALL": m(10),
-            "FONT_MONO_NORMAL": m(11),
-            "FONT_CLOCK": m(13),
-        }
+/* Primary CTA button (Apply Changes) – only saturated element */
+QPushButton.apply-btn {{
+    background-color: {COLOR_ACCENT};
+    color: #000000;
+    font-size: 14px;
+    font-weight: 600;
+    border: none;
+    border-radius: 8px;
+    padding: 12px;
+    min-height: 44px;
+}}
 
-    # Class‑level font cache – rebuilt when RESOLVED_FONT_FAMILY changes
-    _font_cache = {}
+QPushButton.apply-btn:hover {{
+    background-color: {COLOR_ACCENT_SOFT};
+}}
 
-    @classmethod
-    def _rebuild_font_cache(cls):
-        cls._font_cache = cls._build_fonts()
+QPushButton.apply-btn:pressed {{
+    background-color: #0099cc;
+}}
 
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        cls._rebuild_font_cache()
+/* Ghost button (Clear logs, etc.) */
+QPushButton.ghost-btn {{
+    background: transparent;
+    border: 1px solid {COLOR_BORDER};
+    color: {COLOR_TEXT_SECONDARY};
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 13px;
+}}
 
-    @classmethod
-    def __class_getitem__(cls, key):
-        if key in cls._font_cache:
-            return cls._font_cache[key]
-        raise KeyError(key)
+QPushButton.ghost-btn:hover {{
+    border-color: {COLOR_TEXT_SECONDARY};
+    color: {COLOR_TEXT_PRIMARY};
+}}
 
-    # ==================================================================
-    # TTK Style Configuration
-    # ==================================================================
-    @classmethod
-    def configure_styles(cls, root):
-        """Apply theme to all ttk widgets using the resolved font family."""
-        style = ttk.Style(root)
-        style.theme_use("clam")
+/* Slider (Sensor Simulator) */
+QSlider::groove:horizontal {{
+    height: 4px;
+    background: #2a3646;
+    border-radius: 2px;
+}}
 
-        family = cls.RESOLVED_FONT_FAMILY
-        mono = cls.MONO_FAMILY
+QSlider::handle:horizontal {{
+    width: 16px;
+    height: 16px;
+    margin: -6px 0;
+    border-radius: 8px;
+    background: {COLOR_ACCENT};
+}}
 
-        # Global default
-        style.configure(
-            ".",
-            background=cls.BG_DARK,
-            foreground=cls.TEXT_PRIMARY,
-            font=(family, 10),
-            borderwidth=0,
-        )
+QSlider::sub-page:horizontal {{
+    background: {COLOR_ACCENT};
+    border-radius: 2px;
+}}
 
-        # Frames
-        style.configure("Panel.TFrame", background=cls.BG_PANEL)
-        style.configure("Dark.TFrame", background=cls.BG_DARK)
-        style.configure("Navy.TFrame", background=cls.BG_NAVY)
+/* Toast notification */
+QFrame.toast {{
+    background-color: #1a2433;
+    border: 1px solid {COLOR_AMBER};
+    border-radius: 8px;
+    padding: 12px 20px;
+}}
 
-        # Labels
-        style.configure(
-            "Panel.TLabel",
-            background=cls.BG_PANEL,
-            foreground=cls.TEXT_PRIMARY,
-            font=(family, 11),
-        )
-        style.configure(
-            "Title.TLabel",
-            background=cls.BG_PANEL,
-            foreground=cls.PRIMARY,
-            font=(family, 11, "bold"),
-        )
+/* Status pill (header) */
+QFrame.status-pill {{
+    border: 1px solid {COLOR_GREEN};
+    border-radius: 12px;
+    padding: 4px 12px;
+    background: transparent;
+}}
 
-        # ================================================================
-        # FIX: Generic Treeview with proper rowheight for ALL treeviews
-        # ================================================================
-        import tkinter.font as _tkfont
-        _rowh = _tkfont.Font(family=mono, size=10).metrics("linespace") + 10
-        style.configure(
-            "Treeview",
-            background=cls.BG_PANEL,
-            fieldbackground=cls.BG_PANEL,
-            foreground=cls.TEXT_PRIMARY,
-            borderwidth=0,
-            font=(mono, 10),
-            rowheight=_rowh,
-        )
-        style.configure(
-            "Treeview.Heading",
-            background=cls.BG_NAVY,
-            foreground=cls.TEXT_SECONDARY,
-            relief="flat",
-            padding=(6, 6),
-            font=(family, 10, "bold"),
-        )
-        style.map(
-            "Treeview",
-            background=[("selected", cls.PRIMARY_DARK)],
-            foreground=[("selected", cls.TEXT_PRIMARY)],
-        )
+QLabel.status-pill-text {{
+    font-size: 13px;
+    font-family: {FONT_MONO};
+    color: {COLOR_GREEN};
+}}
 
-        # Log Treeview – now a child style to inherit rowheight
-        style.configure(
-            "Treeview.Log",
-            background=cls.BG_NAVY,
-            foreground=cls.TEXT_PRIMARY,
-            fieldbackground=cls.BG_NAVY,
-            borderwidth=0,
-            font=(mono, 10),
-            # rowheight is inherited from base "Treeview"
-        )
-        style.configure(
-            "Treeview.Log.Heading",
-            background=cls.BG_PANEL,
-            foreground=cls.TEXT_SECONDARY,
-            font=(family, 10),
-            relief="flat",
-        )
-        style.map(
-            "Treeview.Log",
-            background=[("selected", cls.PRIMARY_DARK)],
-        )
+/* Scrollbars */
+QScrollBar:vertical {{
+    background: {COLOR_TERMINAL_BG};
+    width: 8px;
+    border-radius: 4px;
+}}
 
-        # Buttons (flat industrial look)
-        style.configure(
-            "Industrial.TButton",
-            background=cls.PRIMARY_DARK,
-            foreground=cls.PRIMARY,
-            font=(family, 10),
-            padding=(12, 4),
-            borderwidth=0,
-            relief="flat",
-        )
-        style.map(
-            "Industrial.TButton",
-            background=[("active", cls.BG_HOVER)],
-        )
+QScrollBar::handle:vertical {{
+    background: #2a3646;
+    border-radius: 4px;
+    min-height: 30px;
+}}
 
-        # Entry fields
-        style.configure(
-            "Industrial.TEntry",
-            fieldbackground=cls.BG_NAVY,
-            foreground=cls.TEXT_PRIMARY,
-            insertcolor=cls.PRIMARY,
-            font=(mono, 11),
-            borderwidth=0,
-            padding=4,
-        )
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {{
+    height: 0;
+}}
 
-        # Progress bars
-        style.configure(
-            "Industrial.Horizontal.TProgressbar",
-            troughcolor=cls.BG_NAVY,
-            background=cls.PRIMARY,
-            borderwidth=0,
-        )
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {{
+    background: none;
+}}
+"""
 
-        # Scrollbars
-        style.configure(
-            "Industrial.Vertical.TScrollbar",
-            background=cls.BG_PANEL,
-            troughcolor=cls.BG_DARK,
-            borderwidth=0,
-            arrowsize=0,
-        )
-        style.map(
-            "Industrial.Vertical.TScrollbar",
-            background=[("active", cls.BG_HOVER)],
-        )
-
-
-# ======================================================================
-# 🔧 Finalise font cache and inject font tokens as real class attributes
-# ======================================================================
-IndustrialTheme._rebuild_font_cache()
-
-for _name, _value in IndustrialTheme._build_fonts().items():
-    setattr(IndustrialTheme, _name, _value)
+# Optional: explicitly export the most important symbols
+__all__ = [
+    "GLOBAL_QSS",
+    "COLOR_BG_DEEP",
+    "COLOR_PANEL",
+    "COLOR_BORDER",
+    "COLOR_ACCENT",
+    "COLOR_ACCENT_SOFT",
+    "COLOR_AMBER",
+    "COLOR_GREEN",
+    "COLOR_RED",
+    "COLOR_TEXT_PRIMARY",
+    "COLOR_TEXT_SECONDARY",
+    "COLOR_TEXT_FAINT",
+    "COLOR_TERMINAL_BG",
+    "COLOR_CHART_GRID",
+    "COLOR_ACTIVE_NAV",
+    "FONT_UI",
+    "FONT_MONO",
+]

@@ -65,3 +65,8 @@ run.log                        # (covered by *.log)
 # Possibly ignore generated reports
 demo/report_*.csv              # (you already have report_*.csv)*.rsm
 *.rsm
+
+echo "demo/config.ini" >> .gitignore
+echo "demo/config.yaml" >> .gitignore
+echo "demo/plc_state.json" >> .gitignore
+echo "tracked_files.txt" >> .gitignore

@@ -1,147 +1,159 @@
+# demo/ui/status_cards.py
 """
-Status cards for the S7 SCADA dashboard right panel and bottom bar.
-Fixed: wraplength reduced for narrow right panel (200px), status bar spacing improved.
+KPI Status Cards: Temperature, CPU, RAM, Heartbeat
+
+Features:
+  - Breathing animation on status dots when in LIVE mode (disabled in SIM)
+  - 46px value, 12px mono metadata
+  - 8px status dot (green by default, amber for RAM card)
+  - Support for metadata updates and live mode toggling
 """
 
-import tkinter as tk
-
-from .theme import IndustrialTheme as T
-from .widgets import InfoRow, StatusIndicator
-
-
-class ForkBuildCard(tk.Frame):
-    def __init__(self, parent, info, server_mode, **kwargs):
-        super().__init__(parent, bg=T.BG_PANEL, **kwargs)
-        header = tk.Frame(self, bg=T.BG_PANEL)
-        header.pack(fill="x", padx=T.PADDING_MD, pady=(T.PADDING_MD, T.PADDING_SM))
-        tk.Label(
-            header,
-            text="FORK BUILD (THIS REPO)",
-            bg=T.BG_PANEL,
-            fg=T.PRIMARY,
-            font=T.FONT_TITLE,
-        ).pack(side="left")
-        InfoRow(self, "Upstream", info.get("upstream", "n/a"), T.TEXT_SECONDARY).pack(
-            fill="x", padx=T.PADDING_MD, pady=(0, 2)
-        )
-        InfoRow(self, "Branch", info.get("branch", "n/a")).pack(
-            fill="x", padx=T.PADDING_MD, pady=(2, 2)
-        )
-        InfoRow(self, "Commit", info.get("commit", "n/a")).pack(
-            fill="x", padx=T.PADDING_MD, pady=(2, 2)
-        )
-        InfoRow(self, "DLL SHA256", info.get("dll_sha", "n/a")).pack(
-            fill="x", padx=T.PADDING_MD, pady=(2, 2)
-        )
-        InfoRow(self, "Server Mode", server_mode, T.SUCCESS).pack(
-            fill="x", padx=T.PADDING_MD, pady=(2, 2)
-        )
-        # FIX: Reduced wraplength to 180 to fit within 200px panel (with padding)
-        tk.Label(
-            self,
-            text="Both ends of the wire run THIS repo's compiled code.",
-            bg=T.BG_PANEL,
-            fg=T.TEXT_DIM,
-            font=T.FONT_XS,
-            wraplength=180,
-            justify="left",
-        ).pack(anchor="w", padx=T.PADDING_MD, pady=(2, T.PADDING_MD))
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel
+from PySide6.QtCore import QPropertyAnimation, QEasingCurve, Qt
+from .theme import COLOR_GREEN, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, FONT_MONO, FONT_UI
 
 
-class ConnectionCard(tk.Frame):
-    def __init__(self, parent, **kwargs):
-        super().__init__(parent, bg=T.BG_PANEL, **kwargs)
-        header = tk.Frame(self, bg=T.BG_PANEL)
-        header.pack(fill="x", padx=T.PADDING_MD, pady=(T.PADDING_MD, T.PADDING_SM))
-        tk.Label(
-            header,
-            text="PLC CONNECTION",
-            bg=T.BG_PANEL,
-            fg=T.PRIMARY,
-            font=T.FONT_TITLE,
-        ).pack(side="left")
+class BreathingDot(QLabel):
+    """An 8‑10px circle that can breathe (opacity animation) when in LIVE mode."""
 
-        self.status_indicator = StatusIndicator(self, size=12, color=T.SUCCESS)
-        self.status_indicator.pack(anchor="w", padx=T.PADDING_MD, pady=(0, 2))
+    def __init__(self, color: str = COLOR_GREEN, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(10, 10)
+        self._base_color = color
+        self._live = False
+        self._anim: QPropertyAnimation | None = None
+        self._update_style()
 
-        status_frame = tk.Frame(self, bg=T.BG_PANEL)
-        status_frame.pack(fill="x", padx=T.PADDING_MD)
-        tk.Label(
-            status_frame,
-            text="Status:",
-            bg=T.BG_PANEL,
-            fg=T.TEXT_SECONDARY,
-            font=T.FONT_SMALL,
-        ).pack(side="left")
-        self.status_label = tk.Label(
-            status_frame, text="ONLINE", bg=T.BG_PANEL, fg=T.SUCCESS, font=T.FONT_MEDIUM
-        )
-        self.status_label.pack(side="right")
+    def _update_style(self) -> None:
+        """Apply the current base color and circular shape."""
+        self.setStyleSheet(f"""
+            background-color: {self._base_color};
+            border-radius: 5px;
+        """)
 
-        self.ip_row = InfoRow(self, "PLC IP Address", "127.0.0.1")
-        self.ip_row.pack(fill="x", padx=T.PADDING_MD, pady=(T.PADDING_SM, 0))
-        self.rack_row = InfoRow(self, "Rack / Slot", "0 / 1")
-        self.rack_row.pack(fill="x", padx=T.PADDING_MD, pady=(2, 0))
-        self.time_row = InfoRow(self, "Connection Time", "00:00:00")
-        self.time_row.pack(fill="x", padx=T.PADDING_MD, pady=(2, T.PADDING_MD))
+    def set_color(self, color: str) -> None:
+        """Change the dot's static color (used for fallback amber on RAM card)."""
+        self._base_color = color
+        self._update_style()
 
-    def set_status(self, online):
-        """Safely toggle status without creating duplicate pulse timers."""
-        self.status_indicator.set_status(online)
-        if online:
-            self.status_label.config(text="ONLINE", fg=T.SUCCESS)
+    def set_live(self, live: bool) -> None:
+        """
+        Enable or disable the breathing animation.
+        Called by DashboardView when data source changes.
+        """
+        if live == self._live:
+            return
+        self._live = live
+        if live:
+            self._start_breathing()
         else:
-            self.status_label.config(text="OFFLINE", fg=T.DANGER)
-        # Force UI update
-        self.update_idletasks()
+            self._stop_breathing()
 
-    def set_connection_time(self, seconds):
-        h, m, s = seconds // 3600, (seconds % 3600) // 60, seconds % 60
-        self.time_row.set_value(f"{h:02d}:{m:02d}:{s:02d}")
+    def _start_breathing(self) -> None:
+        """Start a continuous opacity oscillation (1.0 → 0.4 → 1.0) over 1.5s."""
+        if self._anim:
+            self._anim.stop()
+        self._anim = QPropertyAnimation(self, b"windowOpacity")
+        self._anim.setDuration(1500)
+        self._anim.setStartValue(1.0)
+        self._anim.setEndValue(0.4)
+        self._anim.setLoopCount(-1)
+        self._anim.setEasingCurve(QEasingCurve.InOutSine)
+        self._anim.start()
+
+    def _stop_breathing(self) -> None:
+        """Stop animation and reset opacity to fully opaque."""
+        if self._anim:
+            self._anim.stop()
+            self._anim = None
+        self.setWindowOpacity(1.0)
 
 
-class SystemStatusBar(tk.Frame):
-    def __init__(self, parent, **kwargs):
-        super().__init__(parent, bg=T.BG_PANEL, **kwargs)
-        container = tk.Frame(self, bg=T.BG_PANEL)
-        container.pack(fill="x", padx=T.PADDING_MD, pady=(T.PADDING_SM, T.PADDING_SM))
-        self.temp_label = self._add_metric(container, "TEMP", "--", T.PRIMARY)
-        self._add_separator(container)
-        self.cpu_label = self._add_metric(container, "CPU USAGE", "0%", T.PRIMARY)
-        self._add_separator(container)
-        self.mem_label = self._add_metric(container, "MEMORY USAGE", "0%", T.PRIMARY)
-        self._add_separator(container)
-        self.net_label = self._add_metric(container, "NETWORK", "0 KB/s", T.PRIMARY)
-        self._add_separator(container)
-        self.uptime_label = self._add_metric(container, "UPTIME", "0s", T.TEXT_PRIMARY)
+class KPICard(QWidget):
+    """
+    KPI card anatomy (top to bottom):
+      1. Status dot (8px) + label (14px gray)
+      2. Huge value (46px white semibold) + unit (20px gray)
+      3. Two metadata lines (12px gray, mono for tags)
+    """
 
-    def _add_separator(self, parent):
-        """Add a thin vertical separator between status bar metrics."""
-        sep = tk.Frame(parent, width=1, bg=T.BORDER)
-        sep.pack(side="left", fill="y", padx=T.PADDING_SM, pady=2)
+    def __init__(
+        self,
+        title: str,
+        unit: str,
+        tag: str,
+        metadata: list,
+        dot_color: str = COLOR_GREEN,
+        parent=None
+    ):
+        super().__init__(parent)
+        self.setProperty("class", "panel")
+        self.unit = unit
+        self.tag = tag
 
-    def _add_metric(self, parent, title, value, value_color):
-        frame = tk.Frame(parent, bg=T.BG_PANEL)
-        frame.pack(side="left", padx=T.PADDING_SM)
-        tk.Label(frame, text=title, bg=T.BG_PANEL, fg=T.TEXT_SECONDARY, font=T.FONT_XS).pack(
-            anchor="w"
-        )
-        value_label = tk.Label(frame, text=value, bg=T.BG_PANEL, fg=value_color, font=T.FONT_MEDIUM)
-        value_label.pack(anchor="w")
-        return value_label
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(4)
 
-    def update_values(self, temp=0, cpu=0, mem=0, net_up=0, net_down=0, uptime_seconds=0):
-        self.temp_label.config(text=f"{temp:.2f} C")
-        self.cpu_label.config(text=f"{cpu:.0f}%")
-        self.mem_label.config(text=f"{mem:.0f}%")
-        self.net_label.config(text=f"{net_up + net_down:.1f} KB/s")
-        # Format uptime as HH:MM:SS
-        h = int(uptime_seconds) // 3600
-        m = (int(uptime_seconds) % 3600) // 60
-        s = int(uptime_seconds) % 60
-        if h > 0:
-            self.uptime_label.config(text=f"{h}h {m}m {s}s")
-        elif m > 0:
-            self.uptime_label.config(text=f"{m}m {s}s")
+        # 1. Top row: dot + label
+        top_row = QHBoxLayout()
+        top_row.setSpacing(8)
+        self.dot = BreathingDot(dot_color)
+        self.title_label = QLabel(title)
+        self.title_label.setStyleSheet(f"font-size: 14px; color: {COLOR_TEXT_SECONDARY}; font-family: {FONT_UI};")
+        top_row.addWidget(self.dot)
+        top_row.addWidget(self.title_label)
+        top_row.addStretch()
+        layout.addLayout(top_row)
+
+        # 2. Value row
+        val_row = QHBoxLayout()
+        val_row.setAlignment(Qt.AlignLeft | Qt.AlignBottom)
+        val_row.setSpacing(4)
+
+        self.value_label = QLabel("--")
+        self.value_label.setProperty("class", "kpi-value")
+
+        self.unit_label = QLabel(unit)
+        self.unit_label.setProperty("class", "kpi-unit")
+
+        val_row.addWidget(self.value_label)
+        val_row.addWidget(self.unit_label)
+        val_row.addStretch()
+        layout.addLayout(val_row)
+
+        layout.addSpacing(8)
+
+        # 3. Metadata lines (exactly two)
+        self.meta_labels = []
+        for line in metadata:
+            lbl = QLabel(line)
+            lbl.setProperty("class", "meta")
+            layout.addWidget(lbl)
+            self.meta_labels.append(lbl)
+
+        layout.addStretch()
+
+    def update_value(self, value: float | None) -> None:
+        """Update the displayed numeric value, formatting appropriately."""
+        if value is None:
+            self.value_label.setText("--")
+        elif self.unit in ("%", "°C"):
+            self.value_label.setText(f"{value:.1f}")
         else:
-            self.uptime_label.config(text=f"{s}s")
+            self.value_label.setText(str(int(value)))
+
+    def set_live(self, live: bool) -> None:
+        """Forward live mode to the breathing dot."""
+        self.dot.set_live(live)
+
+    def set_status_color(self, color: str) -> None:
+        """Change the status dot's base color (e.g., for fallback)."""
+        self.dot.set_color(color)
+
+    def update_metadata(self, line1: str, line2: str) -> None:
+        """Update the two metadata lines (used for setpoint, free memory, etc.)."""
+        if len(self.meta_labels) >= 2:
+            self.meta_labels[0].setText(line1)
+            self.meta_labels[1].setText(line2)

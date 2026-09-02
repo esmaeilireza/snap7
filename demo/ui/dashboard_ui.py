@@ -1,746 +1,422 @@
+# demo/ui/dashboard_ui.py
 """
-S7 SCADA Dashboard UI - Integrated with ViewManager
-Fixed: Parent-child relationship for Dashboard view.
-Fixed: Order of UI creation so ViewManager exists before AssetPanel.
-Fixed: main_dashboard property defined.
+Main Window – Central widget, layout management, keyboard shortcuts.
+All sidebar items now display real data (Live or Simulated).
+Added a functional Settings page to configure PLC connection parameters.
 """
 
-import queue
-import threading
-import tkinter as tk
-from datetime import datetime
-
-from fork_bridge import (
-    DB1_CPU_OFFSET,
-    DB1_RAM_OFFSET,
-    DB1_SETPOINT_OFFSET,
-    DB1_TEMP_OFFSET,
+import time
+import configparser
+from pathlib import Path
+from PySide6.QtWidgets import (
+    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget,
+    QLabel, QLineEdit, QComboBox, QPushButton, QFormLayout, QMessageBox
 )
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QShortcut, QKeySequence
 
+from .theme import GLOBAL_QSS, COLOR_TEXT_PRIMARY, COLOR_BG_DEEP, COLOR_TEXT_SECONDARY
 from .asset_panel import AssetPanel
-from .chart_widget import LiveChartWidget
-from .log_widget import LogWidget
-from .status_cards import ConnectionCard, ForkBuildCard, SystemStatusBar
-from .theme import IndustrialTheme as T
-from .views import (
-    AlarmsView,
-    AssetsView,
-    DashboardView,
-    DataMonitorView,
-    ReportsView,
-    SettingsView,
-    TrendsView,
-    ViewManager,
-)
-from .widgets import Badge, MetricDisplay
+from .views import DashboardView
+from .widgets import HeaderBar, FooterBar, ToastNotification
 
 
-# ======================================================================
-# TopBar
-# ======================================================================
-class TopBar(tk.Frame):
-    """Header bar with logo, title, and live clock."""
+class SimpleDataPage(QWidget):
+    """A generic page that displays data from the PLC worker."""
 
-    def __init__(self, parent, **kwargs):
-        super().__init__(parent, bg=T.BG_DARK, **kwargs)
-        self._alive = True
-        self._build_ui()
-        self._update_clock()
+    def __init__(self, title: str, fields: list, parent=None):
+        super().__init__(parent)
+        self.title = title
+        self.fields = fields
+        self.data = {field: "--" for field in fields}
 
-    def _build_ui(self):
-        # --- Logo ---
-        logo_frame = tk.Frame(self, bg=T.BG_DARK)
-        logo_frame.pack(side="left", padx=T.PADDING_LG, pady=T.PADDING_SM)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(40, 40, 40, 40)
+        layout.setSpacing(20)
 
-        s7_frame = tk.Frame(logo_frame, bg=T.BG_DARK)
-        s7_frame.pack(anchor="w")
+        title_label = QLabel(title)
+        title_label.setStyleSheet(f"font-size: 24px; font-weight: 600; color: {COLOR_TEXT_PRIMARY};")
+        layout.addWidget(title_label)
 
-        tk.Label(
-            s7_frame,
-            text="S7",
-            bg=T.BG_DARK,
-            fg=T.PRIMARY,
-            font=T.FONT_LOGO,
-        ).pack(side="left")
+        self.info_label = QLabel()
+        self.info_label.setStyleSheet(f"""
+            font-size: 18px;
+            color: {COLOR_TEXT_SECONDARY};
+            font-family: 'JetBrains Mono', monospace;
+            padding: 20px;
+            background-color: {COLOR_BG_DEEP};
+            border-radius: 8px;
+        """)
+        self.info_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        layout.addWidget(self.info_label)
+        layout.addStretch()
 
-        tk.Label(
-            s7_frame,
-            text=" SCADA",
-            bg=T.BG_DARK,
-            fg=T.TEXT_PRIMARY,
-            font=T.FONT_SUBTITLE,
-        ).pack(side="left")
+    def update_data(self, data_dict: dict):
+        for key in self.fields:
+            if key in data_dict:
+                self.data[key] = data_dict[key]
+        self._refresh_display()
 
-        tk.Label(
-            logo_frame,
-            text="INDUSTRIAL SUITE",
-            bg=T.BG_DARK,
-            fg=T.TEXT_DIM,
-            font=T.FONT_XS,
-        ).pack(anchor="w")
+    def _refresh_display(self):
+        lines = [f"{key}: {value}" for key, value in self.data.items()]
+        self.info_label.setText("\n".join(lines))
 
-        # --- Title ---
-        title_frame = tk.Frame(self, bg=T.BG_DARK)
-        title_frame.pack(side="left", fill="x", expand=True)
-        tk.Label(
-            title_frame,
-            text="PLC COMMUNICATION & SENSOR MONITORING",
-            bg=T.BG_DARK,
-            fg=T.TEXT_SECONDARY,
-            font=T.FONT_NORMAL,
-        ).pack(side="left")
 
-        # --- Clock ---
-        right_frame = tk.Frame(self, bg=T.BG_DARK)
-        right_frame.pack(side="right", padx=T.PADDING_LG)
+class SettingsPage(QWidget):
+    """
+    Settings page for PLC connection parameters.
+    Saves changes to config.ini and emits a signal to apply them.
+    """
 
-        self.clock_label = tk.Label(
-            right_frame,
-            text="--:--:--",
-            bg=T.BG_DARK,
-            fg=T.TEXT_PRIMARY,
-            font=T.FONT_CLOCK,
-        )
-        self.clock_label.pack(anchor="e")
+    settings_applied = Signal(dict)  # emits {"ip": ..., "rack": ..., "slot": ..., "port": ..., "mode": ...}
 
-        self.date_label = tk.Label(
-            right_frame,
-            text="",
-            bg=T.BG_DARK,
-            fg=T.TEXT_MUTED,
-            font=T.FONT_SMALL,
-        )
-        self.date_label.pack(anchor="e")
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.config_file = Path(__file__).parent.parent / "config.ini"
 
-    def stop(self):
-        """Signal the clock loop to halt."""
-        self._alive = False
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(40, 40, 40, 40)
+        layout.setSpacing(20)
 
-    def _update_clock(self):
-        if not self._alive:
-            return
+        # Title
+        title = QLabel("Settings")
+        title.setStyleSheet(f"font-size: 24px; font-weight: 600; color: {COLOR_TEXT_PRIMARY};")
+        layout.addWidget(title)
+
+        # Form
+        form = QFormLayout()
+        form.setSpacing(16)
+        form.setLabelAlignment(Qt.AlignRight)
+
+        # Load current config
+        config = configparser.ConfigParser()
+        if self.config_file.exists():
+            config.read(self.config_file)
+        else:
+            config.add_section("PLC")
+
+        self.ip_edit = QLineEdit(config.get("PLC", "ip", fallback="127.0.0.1"))
+        self.ip_edit.setStyleSheet("background-color: #0d1420; border: 1px solid #1d2836; border-radius: 4px; padding: 6px; color: white;")
+
+        self.rack_edit = QLineEdit(config.get("PLC", "rack", fallback="0"))
+        self.rack_edit.setStyleSheet("background-color: #0d1420; border: 1px solid #1d2836; border-radius: 4px; padding: 6px; color: white;")
+
+        self.slot_edit = QLineEdit(config.get("PLC", "slot", fallback="1"))
+        self.slot_edit.setStyleSheet("background-color: #0d1420; border: 1px solid #1d2836; border-radius: 4px; padding: 6px; color: white;")
+
+        self.port_edit = QLineEdit(config.get("PLC", "port", fallback="102"))
+        self.port_edit.setStyleSheet("background-color: #0d1420; border: 1px solid #1d2836; border-radius: 4px; padding: 6px; color: white;")
+
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["simulated", "live"])
+        current_mode = config.get("PLC", "mode", fallback="simulated")
+        self.mode_combo.setCurrentText(current_mode)
+        self.mode_combo.setStyleSheet("""
+            QComboBox {
+                background-color: #0d1420;
+                color: white;
+                border: 1px solid #1d2836;
+                border-radius: 4px;
+                padding: 6px;
+            }
+            QComboBox:hover { border-color: #00c2ff; }
+        """)
+
+        form.addRow("IP Address:", self.ip_edit)
+        form.addRow("Rack:", self.rack_edit)
+        form.addRow("Slot:", self.slot_edit)
+        form.addRow("Port:", self.port_edit)
+        form.addRow("Default Mode:", self.mode_combo)
+
+        layout.addLayout(form)
+
+        # Save button
+        save_btn = QPushButton("Apply Settings")
+        save_btn.setProperty("class", "apply-btn")
+        save_btn.setCursor(Qt.PointingHandCursor)
+        save_btn.clicked.connect(self._save_settings)
+        layout.addWidget(save_btn)
+
+        layout.addStretch()
+
+    def _save_settings(self):
+        """Save settings to config.ini and emit signal with new values."""
         try:
-            now = datetime.now()
-            self.clock_label.config(text=now.strftime("%H:%M:%S"))
-            self.date_label.config(text=now.strftime("%b %d, %Y"))
-            self.after(1000, self._update_clock)
-        except tk.TclError:
-            self._alive = False
+            ip = self.ip_edit.text().strip()
+            rack = int(self.rack_edit.text().strip())
+            slot = int(self.slot_edit.text().strip())
+            port = int(self.port_edit.text().strip())
+            mode = self.mode_combo.currentText().lower()
+
+            # Validate
+            if not ip:
+                raise ValueError("IP address cannot be empty")
+            if rack < 0 or rack > 7:
+                raise ValueError("Rack must be between 0 and 7")
+            if slot < 0 or slot > 7:
+                raise ValueError("Slot must be between 0 and 7")
+            if port < 1 or port > 65535:
+                raise ValueError("Port must be between 1 and 65535")
+
+            # Save to config.ini
+            config = configparser.ConfigParser()
+            if self.config_file.exists():
+                config.read(self.config_file)
+            if not config.has_section("PLC"):
+                config.add_section("PLC")
+
+            config.set("PLC", "ip", ip)
+            config.set("PLC", "rack", str(rack))
+            config.set("PLC", "slot", str(slot))
+            config.set("PLC", "port", str(port))
+            config.set("PLC", "mode", mode)
+
+            with open(self.config_file, "w") as f:
+                config.write(f)
+
+            # Emit signal
+            self.settings_applied.emit({
+                "ip": ip,
+                "rack": rack,
+                "slot": slot,
+                "port": port,
+                "mode": mode,
+            })
+
+            QMessageBox.information(self, "Settings Saved",
+                                    f"Settings saved successfully!\n\n"
+                                    f"IP: {ip}\nRack: {rack}\nSlot: {slot}\nPort: {port}\nMode: {mode}\n\n"
+                                    "The changes have been applied.")
+
+        except ValueError as e:
+            QMessageBox.warning(self, "Invalid Input", f"Please check your input:\n{str(e)}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to save settings:\n{str(e)}")
 
 
-# ======================================================================
-# NavigationSidebar
-# ======================================================================
-class NavigationSidebar(tk.Frame):
-    """Left navigation rail with active-state indicator and hover effects."""
+class MainWindow(QMainWindow):
+    """Main application window with sidebar navigation."""
 
-    MENU_ITEMS = [
-        ("Dashboard", True, None),
-        ("Assets", False, None),
-        ("Data Monitor", False, None),
-        ("Alarms", False, 2),
-        ("Trends", False, None),
-        ("Reports", False, None),
-        ("Settings", False, None),
-    ]
+    demo_toggled = Signal(bool)
+    mode_changed = Signal(str)   # emits "live" or "simulated"
+    settings_applied = Signal(dict)  # forwards settings from SettingsPage
 
-    def __init__(self, parent, on_navigate=None, **kwargs):
-        super().__init__(parent, bg=T.BG_NAVY, width=240, **kwargs)
-        self.pack_propagate(False)
-        self.on_navigate = on_navigate
-        self._menu_widgets = {}
-        self._current_active = "Dashboard"
-        self._build_ui()
+    def __init__(self, build_info: dict, parent=None):
+        super().__init__(parent)
+        self.build_info = build_info
+        self.setWindowTitle("S7 SCADA - Fork-Integrated Industrial Dashboard")
+        self.resize(1440, 900)
+        self.setMinimumSize(1024, 600)
+        self.setStyleSheet(GLOBAL_QSS)
 
-    def _build_ui(self):
-        tk.Label(
-            self,
-            text="NAVIGATION",
-            bg=T.BG_NAVY,
-            fg=T.PRIMARY,
-            font=T.FONT_TITLE,
-        ).pack(anchor="w", padx=T.PADDING_MD, pady=(T.PADDING_LG, T.PADDING_SM))
+        self._demo_mode = False
+        self._uptime_start = time.time()
+        self._current_mode = "simulated"
 
-        for name, active, badge in self.MENU_ITEMS:
-            self._create_menu_item(name, active, badge)
+        # Central widget
+        central = QWidget()
+        self.setCentralWidget(central)
+        root_layout = QVBoxLayout(central)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
 
-    def _create_menu_item(self, name, active, badge_count=None):
-        bg = T.BG_NAVY
-        fg = T.TEXT_MUTED
+        # 1. Header
+        self.header = HeaderBar(build_info)
+        root_layout.addWidget(self.header)
 
-        item = tk.Frame(self, bg=bg, cursor="hand2", height=38)
-        item.pack(fill="x", padx=T.PADDING_SM, pady=2)
-        item.pack_propagate(False)
+        self.header.mode_changed.connect(self.mode_changed.emit)
+        self.mode_changed.connect(lambda mode: setattr(self, '_current_mode', mode))
 
-        indicator = None
-        if active:
-            indicator = tk.Frame(item, width=3, bg=T.PRIMARY)
-            indicator.place(x=0, y=0, relheight=1)
-            bg = T.PRIMARY_DARK
-            fg = T.TEXT_PRIMARY
+        # 2. Body: Sidebar + Stacked Content
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
 
-        icon_char = "●" if active else "○"
-        icon_lbl = tk.Label(item, text=icon_char, bg=bg, fg=fg, font=T.FONT_NORMAL)
-        icon_lbl.pack(side="left", padx=(T.PADDING_MD, T.PADDING_SM))
+        self.sidebar = AssetPanel()
+        body.addWidget(self.sidebar)
 
-        name_lbl = tk.Label(
-            item,
-            text=name,
-            bg=bg,
-            fg=fg,
-            font=T.FONT_NORMAL,
-            anchor="w",
+        # ---- STACKED WIDGET ----
+        self.stacked_widget = QStackedWidget()
+
+        # Page 0: Main Dashboard
+        self.dashboard_view = DashboardView()
+        self.stacked_widget.addWidget(self.dashboard_view)
+
+        # Page 1: PLC Data
+        self.plc_data_page = SimpleDataPage(
+            "PLC Data - Live Tags",
+            ["Temperature (°C)", "CPU (%)", "RAM (%)", "Heartbeat", "Setpoint (°C)", "Mode"]
         )
-        name_lbl.pack(side="left", fill="x", expand=True, padx=(0, T.PADDING_SM))
+        self.stacked_widget.addWidget(self.plc_data_page)
 
-        if badge_count:
-            Badge(item, text=str(badge_count), color=T.DANGER, size=18).pack(
-                side="right",
-                padx=(0, T.PADDING_MD),
-            )
+        # Page 2: Sensors
+        self.sensors_page = SimpleDataPage(
+            "Sensor Data",
+            ["Temperature (°C)", "Setpoint (°C)", "Mode"]
+        )
+        self.stacked_widget.addWidget(self.sensors_page)
 
-        # Store references for dynamic updates
-        self._menu_widgets[name] = {
-            "frame": item,
-            "indicator": indicator,
-            "icon": icon_lbl,
-            "label": name_lbl,
-            "active": active,
+        # Page 3: System Metrics
+        self.metrics_page = SimpleDataPage(
+            "System Metrics",
+            ["CPU Usage (%)", "RAM Usage (%)", "Uptime (s)", "Mode"]
+        )
+        self.stacked_widget.addWidget(self.metrics_page)
+
+        # Page 4: Logs
+        log_container = QWidget()
+        log_layout = QVBoxLayout(log_container)
+        log_layout.setContentsMargins(20, 20, 20, 20)
+        self.logs_page = self.dashboard_view.logs
+        log_layout.addWidget(self.logs_page)
+        self.stacked_widget.addWidget(log_container)
+
+        # Page 5: Settings (real settings page)
+        self.settings_page = SettingsPage()
+        self.settings_page.settings_applied.connect(self.settings_applied.emit)
+        self.stacked_widget.addWidget(self.settings_page)
+
+        body.addWidget(self.stacked_widget, stretch=1)
+
+        body_widget = QWidget()
+        body_widget.setLayout(body)
+        root_layout.addWidget(body_widget, stretch=1)
+
+        # 3. Footer
+        self.footer = FooterBar(build_info)
+        root_layout.addWidget(self.footer)
+
+        # Toast overlay
+        self.toast = ToastNotification(self)
+        self.toast.setParent(self)
+
+        # ---- Connect sidebar navigation ----
+        self.sidebar.nav_selected.connect(self.switch_view)
+
+        # ---- Demo Mode (Ctrl+Shift+D) ----
+        demo_shortcut = QShortcut(QKeySequence("Ctrl+Shift+D"), self)
+        demo_shortcut.activated.connect(self.toggle_demo_mode)
+
+        # Uptime timer
+        self._uptime_timer = QTimer(self)
+        self._uptime_timer.timeout.connect(self._update_uptime)
+        self._uptime_timer.start(1000)
+
+        # Store current data
+        self._current_data = {
+            "temp": 0.0,
+            "cpu": 0.0,
+            "ram": 0.0,
+            "hb": 0,
+            "setpoint": 0.0,
+            "live": False
         }
 
-        def on_enter(e, _name=name):
-            current_act = self._menu_widgets[_name]["active"]
-            if not current_act:
-                item.config(bg=T.BG_HOVER)
-                icon_lbl.config(bg=T.BG_HOVER, fg=T.TEXT_SECONDARY)
-                name_lbl.config(bg=T.BG_HOVER, fg=T.TEXT_SECONDARY)
+    def switch_view(self, view_name: str) -> None:
+        """Switch the stacked widget to the page corresponding to the sidebar item."""
+        index_map = {
+            "dashboard": 0,
+            "plc_data": 1,
+            "sensors": 2,
+            "system_metrics": 3,
+            "logs": 4,
+            "settings": 5,
+        }
+        index = index_map.get(view_name, 0)
+        self.stacked_widget.setCurrentIndex(index)
 
-        def on_leave(e, _name=name):
-            current_act = self._menu_widgets[_name]["active"]
-            if not current_act:
-                item.config(bg=T.BG_NAVY)
-                icon_lbl.config(bg=T.BG_NAVY, fg=T.TEXT_MUTED)
-                name_lbl.config(bg=T.BG_NAVY, fg=T.TEXT_MUTED)
+        page_name = view_name.replace("_", " ").title()
+        self.dashboard_view.logs.log("INFO", "NAV", f"Switched to: {page_name}")
 
-        def on_click(e=None, _name=name):
-            self.set_active(_name)
-            if self.on_navigate:
-                self.on_navigate(_name)
+    def update_all_pages(self, data: dict):
+        """Update ALL pages with new data."""
+        self._current_data = data
 
-        for w in (item, icon_lbl, name_lbl):
-            w.bind("<Button-1>", on_click)
-            w.bind("<Enter>", on_enter)
-            w.bind("<Leave>", on_leave)
-
-    def set_active(self, name):
-        """Update visual state of menu items."""
-        if name not in self._menu_widgets:
-            return
-
-        for n, widgets in self._menu_widgets.items():
-            is_active = n == name
-            widgets["active"] = is_active
-
-            bg = T.PRIMARY_DARK if is_active else T.BG_NAVY
-            fg = T.TEXT_PRIMARY if is_active else T.TEXT_MUTED
-
-            widgets["frame"].config(bg=bg)
-            widgets["icon"].config(bg=bg, fg=fg, text="●" if is_active else "○")
-            widgets["label"].config(bg=bg, fg=fg)
-
-            if is_active:
-                if not widgets["indicator"]:
-                    ind = tk.Frame(widgets["frame"], width=3, bg=T.PRIMARY)
-                    ind.place(x=0, y=0, relheight=1)
-                    widgets["indicator"] = ind
-                else:
-                    widgets["indicator"].config(bg=T.PRIMARY)
-            else:
-                if widgets["indicator"]:
-                    widgets["indicator"].config(bg=T.BG_NAVY)
-
-
-# ======================================================================
-# MainDashboard
-# ======================================================================
-class MainDashboard(tk.Frame):
-    """Central content area: temperature card, chart, log, and right panel."""
-
-    def __init__(self, parent, client=None, build_info=None, server_mode="", **kwargs):
-        super().__init__(parent, bg=T.BG_DARK, **kwargs)
-        self.client = client
-        self.build_info = build_info or {}
-        self.server_mode = server_mode
-        self._build_ui()
-
-    def _build_ui(self):
-        # ===== FIX: Use grid to avoid conflict with ViewManager's place() =====
-        self.grid_rowconfigure(0, weight=1)
-        self.grid_columnconfigure(0, weight=1)   # Main area expands
-        self.grid_columnconfigure(1, weight=0)   # Right panel fixed
-
-        main_area = tk.Frame(self, bg=T.BG_DARK)
-        main_area.grid(row=0, column=0, sticky="nsew", padx=T.PADDING_SM)
-
-        # --- Temperature Card ---
-        temp_card = tk.Frame(main_area, bg=T.BG_PANEL)
-        temp_card.pack(fill="both", expand=True, pady=(T.PADDING_SM, T.PADDING_SM))
-
-        header = tk.Frame(temp_card, bg=T.BG_PANEL)
-        header.pack(fill="x", padx=T.PADDING_MD, pady=(T.PADDING_MD, 0))
-        tk.Label(
-            header,
-            text="TEMPERATURE SENSOR 01",
-            bg=T.BG_PANEL,
-            fg=T.TEXT_PRIMARY,
-            font=T.FONT_TITLE,
-        ).pack(side="left")
-
-        live_badge = tk.Frame(header, bg=T.SUCCESS_DARK)
-        live_badge.pack(side="right")
-        tk.Label(
-            live_badge,
-            text="LIVE",
-            bg=T.SUCCESS_DARK,
-            fg=T.SUCCESS,
-            font=T.FONT_SMALL,
-            padx=T.PADDING_SM,
-            pady=2,
-        ).pack()
-
-        # Metrics row
-        metrics_row = tk.Frame(temp_card, bg=T.BG_PANEL)
-        metrics_row.pack(fill="x", padx=T.PADDING_MD, pady=T.PADDING_MD)
-
-        self.current_temp_metric = MetricDisplay(
-            metrics_row,
-            "Current Temperature",
-            "--",
-            "°C",
-            value_color=T.PRIMARY,
-        )
-        self.current_temp_metric.pack(side="left", fill="x", expand=True)
-
-        tk.Frame(metrics_row, width=1, bg=T.BORDER).pack(
-            side="left",
-            fill="y",
-            padx=T.PADDING_MD,
-        )
-
-        self.target_metric = MetricDisplay(
-            metrics_row,
-            "Target Setpoint",
-            "--",
-            "°C",
-            value_color=T.DANGER,
-        )
-        self.target_metric.pack(side="left", fill="x", expand=True)
-
-        # Setpoint control
-        ctrl = tk.Frame(temp_card, bg=T.BG_PANEL)
-        ctrl.pack(fill="x", padx=T.PADDING_MD, pady=(0, T.PADDING_SM))
-        tk.Label(
-            ctrl,
-            text="Operator Setpoint:",
-            bg=T.BG_PANEL,
-            fg=T.TEXT_SECONDARY,
-            font=T.FONT_NORMAL,
-        ).pack(side="left")
-
-        self.setpoint_var = tk.StringVar(value="65.50")
-        tk.Entry(
-            ctrl,
-            textvariable=self.setpoint_var,
-            width=8,
-            bg=T.BG_NAVY,
-            fg=T.TEXT_PRIMARY,
-            insertbackground=T.PRIMARY,
-            font=T.FONT_MONO_NORMAL,
-            relief="flat",
-        ).pack(side="left", padx=T.PADDING_SM)
-
-        tk.Button(
-            ctrl,
-            text="APPLY SETPOINT",
-            bg=T.PRIMARY_DARK,
-            fg=T.PRIMARY,
-            font=T.FONT_SMALL,
-            relief="flat",
-            bd=0,
-            padx=12,
-            pady=4,
-            command=self.on_setpoint_apply,
-        ).pack(side="left")
-
-        # Chart
-        self.chart = LiveChartWidget(temp_card, setpoint=65.5)
-        self.chart.pack(fill="both", expand=True, padx=T.PADDING_MD, pady=(0, T.PADDING_MD))
-
-        # Log panel
-        log_card = tk.Frame(main_area, bg=T.BG_PANEL, height=180)
-        log_card.pack(fill="x", pady=(T.PADDING_SM, 0))
-        log_card.pack_propagate(False)
-        self.log_widget = LogWidget(log_card, max_entries=50)
-        self.log_widget.pack(fill="both", expand=True)
-
-        # --- Right Panel ---
-        # ===== FIX: Reduced to 180 to give more room for chart =====
-        right_panel = tk.Frame(self, bg=T.BG_DARK, width=180)
-        right_panel.grid(row=0, column=1, sticky="ns", padx=(0, T.PADDING_SM))
-        right_panel.grid_propagate(False)
-
-        ForkBuildCard(right_panel, self.build_info, self.server_mode).pack(
-            fill="x",
-            pady=(T.PADDING_SM, T.PADDING_SM),
-        )
-        self.connection_card = ConnectionCard(right_panel)
-        self.connection_card.pack(fill="x", pady=(T.PADDING_SM, T.PADDING_SM))
-
-    def on_setpoint_apply(self):
-        try:
-            value = float(self.setpoint_var.get())
-        except ValueError:
-            self.log_widget.add_entry("WARNING", "UI", "Invalid setpoint value")
-            return
-
-        if self.client:
-            try:
-                self.client.write_real(1, DB1_SETPOINT_OFFSET, value)
-                self.log_widget.add_entry(
-                    "INFO",
-                    "UI",
-                    f"Setpoint updated to {value:.2f} °C in DB1.DBD12",
-                )
-            except Exception as e:
-                self.log_widget.add_entry("ERROR", "UI", f"Write Setpoint failed: {e}")
+        if self._current_mode == "live" and not data.get("live", False):
+            plc_data = {
+                "Temperature (°C)": "--",
+                "CPU (%)": "--",
+                "RAM (%)": "--",
+                "Heartbeat": "--",
+                "Setpoint (°C)": "--",
+                "Mode": "LIVE (NO DATA)",
+            }
+            sensors_data = {
+                "Temperature (°C)": "--",
+                "Setpoint (°C)": "--",
+                "Mode": "LIVE (NO DATA)",
+            }
+            metrics_data = {
+                "CPU Usage (%)": "--",
+                "RAM Usage (%)": "--",
+                "Uptime (s)": "--",
+                "Mode": "LIVE (NO DATA)",
+            }
         else:
-            self.log_widget.add_entry(
-                "WARNING",
-                "UI",
-                "No PLC connection - setpoint not applied",
-            )
+            mode_str = "LIVE" if data.get("live", False) else "SIMULATED"
+            plc_data = {
+                "Temperature (°C)": f"{data['temp']:.2f}",
+                "CPU (%)": f"{data['cpu']:.2f}",
+                "RAM (%)": f"{data['ram']:.2f}",
+                "Heartbeat": str(data['hb']),
+                "Setpoint (°C)": f"{data['setpoint']:.2f}",
+                "Mode": mode_str,
+            }
+            sensors_data = {
+                "Temperature (°C)": f"{data['temp']:.2f}",
+                "Setpoint (°C)": f"{data['setpoint']:.2f}",
+                "Mode": mode_str,
+            }
+            metrics_data = {
+                "CPU Usage (%)": f"{data['cpu']:.2f}",
+                "RAM Usage (%)": f"{data['ram']:.2f}",
+                "Uptime (s)": str(int(time.time() - self._uptime_start)),
+                "Mode": mode_str,
+            }
 
-    # ===== FIX: Public method to force chart resize after DPI scaling =====
-    def refresh_chart(self):
-        if hasattr(self, "chart"):
-            self.chart.update_idletasks()
-            if hasattr(self.chart, "resize"):
-                self.chart.resize()
+        self.plc_data_page.update_data(plc_data)
+        self.sensors_page.update_data(sensors_data)
+        self.metrics_page.update_data(metrics_data)
 
+    def set_mode_ui(self, mode: str):
+        """Sync the header combo box with the current mode."""
+        self.header.set_mode(mode)
+        self._current_mode = mode
 
-# ======================================================================
-# SCADADashboard (Root Window)
-# ======================================================================
-class SCADADashboard(tk.Tk):
-    """Application root with safe lifecycle management."""
-
-    def __init__(
-        self,
-        client=None,
-        build_info=None,
-        server_mode="",
-        sensor_sim=None,
-        system_sim=None,
-        resolved_font=None,
-    ):
-        super().__init__()
-
-        self.client = client
-        self.sensor_sim = sensor_sim
-        self.system_sim = system_sim
-        self.connect_start = None
-        self.on_shutdown = None
-        self.build_info = build_info or {}
-        self.server_mode = server_mode
-        self._alive = True
-
-        # Apply validated font AND rebuild all font tokens
-        if resolved_font:
-            T.RESOLVED_FONT_FAMILY = resolved_font
-            T._rebuild_font_cache()
-            for _name, _value in T._build_fonts().items():
-                setattr(T, _name, _value)
-
-        self.title("S7 SCADA - Industrial Monitoring Suite")
-        # ===== FIX: Further increased geometry =====
-        self.geometry("1800x1020")
-        self.minsize(1600, 900)
-        self.configure(bg=T.BG_DARK)
-
-        # ===== FIX: REMOVED EARLY DPI SCALING =====
-        T.configure_styles(self)
-        self.protocol("WM_DELETE_WINDOW", self.on_closing)
-
-        self._build_ui()
-
-        # Non-blocking PLC reader via queue
-        self._data_q = queue.Queue(maxsize=100)
-        self._stop_evt = threading.Event()
-        self._reader = None
-
-        if self.client is not None:
-            self._reader = threading.Thread(
-                target=self._plc_reader_loop,
-                daemon=True,
-            )
-            self._reader.start()
-            self.drain_queue()
-        else:
-            self.schedule_simulation_poll()
-
-    # ------------------------------------------------------------------ Build
-    def _build_ui(self):
-        self._topbar = TopBar(self)
-        self._topbar.pack(fill="x")
-
-        main_container = tk.Frame(self, bg=T.BG_DARK)
-        main_container.pack(fill="both", expand=True)
-
-        # Sidebar with navigation callback
-        self._sidebar = NavigationSidebar(
-            main_container,
-            on_navigate=self._on_navigate,
-        )
-        self._sidebar.pack(side="left", fill="y")
-
-        # ===== FIX: Create ViewManager BEFORE AssetPanel =====
-        self.view_manager = ViewManager(main_container)
-        self.view_manager.pack(side="left", fill="both", expand=True)
-
-        # Asset Panel (its callback will now see self.view_manager exists)
-        self.asset_panel = AssetPanel(
-            main_container,
-            on_asset_select=self._on_asset_select,
-        )
-        self.asset_panel.pack(side="left", fill="y", padx=T.PADDING_SM)
-
-        # ===== FIX: Create DashboardView with MainDashboard as child =====
-        def create_dashboard_view(parent):
-            view = DashboardView(parent)
-            # Create MainDashboard as a child of the view itself
-            main = MainDashboard(
-                view,   # parent is the DashboardView
-                client=self.client,
-                build_info=self.build_info,
-                server_mode=self.server_mode,
-            )
-            view.inner = main
-            main.place(relx=0, rely=0, relwidth=1, relheight=1)
-            return view
-
-        self.view_manager.register("Dashboard", create_dashboard_view)
-
-        # Register other views
-        self.view_manager.register("Assets", lambda p: AssetsView(p, asset_panel=self.asset_panel))
-        self.view_manager.register("Data Monitor", lambda p: DataMonitorView(p))
-        self.view_manager.register("Alarms", lambda p: AlarmsView(p))
-
-        def trends_chart_factory(parent):
-            return LiveChartWidget(parent, setpoint=65.5)
-
-        self.view_manager.register(
-            "Trends", lambda p: TrendsView(p, chart_factory=trends_chart_factory)
-        )
-
-        self.view_manager.register("Reports", lambda p: ReportsView(p))
-        self.view_manager.register("Settings", lambda p: SettingsView(p))
-
-        # Show default view
-        self.view_manager.show("Dashboard")
-
-        self.status_bar = SystemStatusBar(self)
-        self.status_bar.pack(fill="x", side="bottom")
+    def toggle_demo_mode(self) -> None:
+        self._demo_mode = not self._demo_mode
+        self.header.show_demo_badge(self._demo_mode)
+        self.demo_toggled.emit(self._demo_mode)
+        state = "ACTIVATED" if self._demo_mode else "DEACTIVATED"
+        self.dashboard_view.logs.log("INFO", "SYSTEM", f"Demo mode {state}")
 
     @property
-    def main_dashboard(self):
-        """Return the MainDashboard instance that is inside the DashboardView."""
-        dash_view = self.view_manager._views.get("Dashboard")
-        if dash_view and hasattr(dash_view, "inner"):
-            return dash_view.inner
-        return None
+    def demo_mode(self) -> bool:
+        return self._demo_mode
 
-    # ------------------------------------------------------------------ Events
-    def _on_navigate(self, name):
-        if not self._alive:
-            return
-        try:
-            self.view_manager.show(name)
-            self._sidebar.set_active(name)
-            if self.main_dashboard:
-                self.main_dashboard.log_widget.add_entry("INFO", "NAV", f"Switched to: {name}")
-        except KeyError as e:
-            print(f"[NAV ERROR] {e}")
+    def show_toast(self, message: str, duration_ms: int = 3000) -> None:
+        self.toast.show_message(message, duration_ms)
+        self.toast.adjustSize()
+        x = self.width() - self.toast.width() - 20
+        y = self.height() - self.toast.height() - 50
+        self.toast.move(x, y)
 
-    def _on_asset_select(self, asset):
-        if not self._alive:
-            return
-        md = self.main_dashboard
-        if md and hasattr(md, "log_widget"):
-            md.log_widget.add_entry(
-                "INFO",
-                "UI",
-                f"Selected asset: {asset.name} ({asset.ip})",
-            )
+    def _update_uptime(self) -> None:
+        elapsed = int(time.time() - self._uptime_start)
+        h = elapsed // 3600
+        m = (elapsed % 3600) // 60
+        s = elapsed % 60
+        uptime_str = f"{h:02d}:{m:02d}:{s:02d}"
+        dpi = self.devicePixelRatioF()
+        plc = self.dashboard_view.plc_card
+        ip = plc.fields["IP Address"].text()
+        rack = plc.fields["Rack"].text()
+        slot = plc.fields["Slot"].text()
+        self.footer.update_info(ip, rack, slot, dpi, uptime_str)
 
-    def log_message(self, level, source, message):
-        """Thread-safe public logging API for external modules."""
-        if not self._alive:
-            return
-        md = self.main_dashboard
-        if md and hasattr(md, "log_widget"):
-            md.log_widget.add_entry(level, source, message)
-
-    # ------------------------------------------------------------------ PLC Reader
-    def _plc_reader_loop(self):
-        while not self._stop_evt.is_set():
-            try:
-                temp = self.client.read_real(1, DB1_TEMP_OFFSET)
-                cpu = self.client.read_real(1, DB1_CPU_OFFSET)
-                mem = self.client.read_real(1, DB1_RAM_OFFSET)
-                sp = self.client.read_real(1, DB1_SETPOINT_OFFSET)
-                self._data_q.put_nowait(("ok", (temp, cpu, mem, sp)))
-            except queue.Full:
-                pass
-            except Exception as e:
-                try:
-                    self._data_q.put_nowait(("err", str(e)))
-                except queue.Full:
-                    pass
-            self._stop_evt.wait(0.5)
-
-    # ------------------------------------------------------------------ Queue Drain
-    def drain_queue(self):
-        if not self._alive:
-            return
-
-        latest = None
-        while True:
-            try:
-                latest = self._data_q.get_nowait()
-            except queue.Empty:
-                break
-
-        if latest is not None:
-            kind, payload = latest
-            if kind == "ok":
-                self._apply_sample(payload)
-            else:
-                if self.main_dashboard:
-                    self.main_dashboard.connection_card.set_status(False)
-                    self.main_dashboard.log_widget.add_entry(
-                        "ERROR",
-                        "SNAP7",
-                        f"PLC read failed: {payload}",
-                    )
-                self.connect_start = None
-
-        self.after(200, self.drain_queue)
-
-    def _apply_sample(self, data):
-        if not self._alive:
-            return
-
-        temp, cpu, mem, setpoint = data
-
-        if self.connect_start is None:
-            self.connect_start = datetime.now()
-
-        md = self.main_dashboard
-        if md:
-            md.chart.add_point(temp)
-            md.current_temp_metric.set_value(f"{temp:.2f}")
-            md.target_metric.set_value(f"{setpoint:.2f}")
-
-            elapsed = int((datetime.now() - self.connect_start).total_seconds())
-            md.connection_card.set_connection_time(elapsed)
-            md.connection_card.set_status(True)
-
-        metrics = self.system_sim.get_metrics() if self.system_sim else {}
-        self.status_bar.update_values(
-            temp=temp,
-            cpu=cpu,
-            mem=mem,
-            net_up=metrics.get("net_up", 0),
-            net_down=metrics.get("net_down", 0),
-            uptime_seconds=metrics.get("uptime_seconds", 0),
-        )
-
-        dm_view = self.view_manager._views.get("Data Monitor")
-        if dm_view:
-            dm_view.update_tags(
-                {"TEMP_01": {"value": f"{temp:.2f}", "unit": "°C", "quality": "GOOD"}}
-            )
-
-        trends_view = self.view_manager._views.get("Trends")
-        if trends_view:
-            trends_view.push_point("TEMP_01", temp)
-
-    # ------------------------------------------------------------------ Simulation Fallback
-    def schedule_simulation_poll(self):
-        if not self._alive:
-            return
-        self._simulate_data()
-        self.after(500, self.schedule_simulation_poll)
-
-    def _simulate_data(self):
-        if not self._alive:
-            return
-        value = self.sensor_sim.read() if self.sensor_sim else 65.5
-        if self.main_dashboard:
-            self.main_dashboard.chart.add_point(value)
-            self.main_dashboard.current_temp_metric.set_value(f"{value:.2f}")
-
-    # ------------------------------------------------------------------ Shutdown
-    def on_closing(self):
-        self._alive = False
-
-        if hasattr(self, "_topbar"):
-            self._topbar.stop()
-
-        if hasattr(self, "main_dashboard"):
-            if hasattr(self.main_dashboard, "chart"):
-                self.main_dashboard.chart.stop()
-
-        if self._reader is not None:
-            self._stop_evt.set()
-            self._reader.join(timeout=2.0)
-
-        if self.on_shutdown:
-            try:
-                self.on_shutdown()
-            except Exception:
-                pass
-
-        try:
-            self.tk.eval('catch {bind . <<ThemeChanged>> ""}')
-            self.tk.eval("""
-                catch {
-                    foreach w [winfo children .] {
-                        catch {bind $w <<ThemeChanged>> ""}
-                    }
-                }
-            """)
-        except Exception:
-            pass
-
-        try:
-            after_ids = self.tk.eval("after info").split()
-            for aid in after_ids:
-                try:
-                    self.after_cancel(aid)
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-        try:
-            self.withdraw()
-            self.update_idletasks()
-        except Exception:
-            pass
-
-        try:
-            self.quit()
-            self.destroy()
-        except tk.TclError:
-            pass
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.toast.isVisible():
+            x = self.width() - self.toast.width() - 20
+            y = self.height() - self.toast.height() - 50
+            self.toast.move(x, y)

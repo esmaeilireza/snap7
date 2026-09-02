@@ -1,136 +1,122 @@
+# demo/ui/log_widget.py
 """
-Communication Log Widget
-Fixed: Auto-scroll to newest entry, ensured Treeview renders correctly.
-Style "Log.Treeview" is defined locally with proper rowheight.
+System Logs Terminal Panel
+Matches Visual Spec:
+  - Near-black background (#080b10)
+  - Monospace typography
+  - Color-coded log levels: INFO (green), WARN (amber), ERROR (red)
+  - Amber timestamps [HH:MM:SS]
+  - Source keywords (FORK, SYSTEM, WORKER, PLC) in bold cyan/white
+  - Line spacing ~1.6
+  - "Clear" ghost button
+  - Auto‑scroll and line trimming (max 200 lines)
 """
 
-import tkinter as tk
 from datetime import datetime
-from tkinter import ttk
-import tkinter.font as tkfont  # needed for rowheight calculation
+from PySide6.QtWidgets import (
+    QFrame, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QPushButton
+)
+from PySide6.QtCore import Qt
+from .theme import (
+    COLOR_BG_DEEP, COLOR_PANEL, COLOR_BORDER, COLOR_TERMINAL_BG,
+    COLOR_ACCENT, COLOR_AMBER, COLOR_GREEN, COLOR_RED,
+    COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_TEXT_FAINT,
+    FONT_MONO, FONT_UI
+)
 
-from .theme import IndustrialTheme as T
 
+class LogWidget(QFrame):
+    """System logs terminal with color‑coded entries and auto‑scroll."""
 
-class LogWidget(tk.Frame):
-    LEVEL_COLORS = {
-        "INFO": T.SUCCESS,
-        "DEBUG": T.PRIMARY,
-        "WARNING": T.WARNING,
-        "ERROR": T.DANGER,
-    }
-    # Maximum number of rows to keep (prevents memory bloat and rendering slowdowns)
-    MAX_ROWS = 500
+    MAX_LINES = 200  # maximum number of lines kept in memory
 
-    def __init__(self, parent, max_entries=50, **kwargs):
-        super().__init__(parent, bg=T.BG_PANEL, **kwargs)
-        self.max_entries = max_entries
-        self._build_header()
-        self._build_table()
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setProperty("class", "panel")
 
-    def _build_header(self):
-        header = tk.Frame(self, bg=T.BG_PANEL)
-        header.pack(fill="x", padx=T.PADDING_MD, pady=(T.PADDING_MD, T.PADDING_SM))
-        tk.Label(
-            header,
-            text="COMMUNICATION LOG",
-            bg=T.BG_PANEL,
-            fg=T.TEXT_PRIMARY,
-            font=T.FONT_TITLE,
-        ).pack(side="left")
-        tk.Button(
-            header,
-            text="CLEAR",
-            bg=T.DANGER_BG,
-            fg=T.DANGER,
-            font=T.FONT_SMALL,
-            relief="flat",
-            bd=0,
-            padx=12,
-            pady=4,
-            command=self.clear,
-        ).pack(side="right")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(8)
 
-    def _build_table(self):
-        container = tk.Frame(self, bg=T.BORDER)
-        container.pack(fill="both", expand=True, padx=T.PADDING_MD, pady=T.PADDING_SM)
+        # Header row: title + "Clear" ghost button
+        header = QHBoxLayout()
+        title = QLabel("System Logs")
+        title.setStyleSheet(f"font-size: 16px; font-weight: 600; color: {COLOR_TEXT_PRIMARY}; font-family: {FONT_UI};")
+        header.addWidget(title)
+        header.addStretch()
 
-        columns = ("time", "level", "source", "message")
+        clear_btn = QPushButton("Clear")
+        clear_btn.setProperty("class", "ghost-btn")
+        clear_btn.setCursor(Qt.PointingHandCursor)
+        clear_btn.clicked.connect(self.clear)
+        header.addWidget(clear_btn)
+        layout.addLayout(header)
 
-        # ================================================================
-        # FIX: Define style locally to guarantee it exists and has rowheight
-        # ================================================================
-        style = ttk.Style()
-        # Calculate rowheight from the actual monospaced font used in the theme
-        mono_font = tkfont.Font(font=T.FONT_MONO_SMALL)  # uses the theme's mono font
-        rowheight = mono_font.metrics("linespace") + 8  # add some padding
+        # Terminal body – read‑only QTextEdit with HTML rendering
+        self.terminal = QTextEdit()
+        self.terminal.setReadOnly(True)
+        self.terminal.setStyleSheet(f"""
+            QTextEdit {{
+                background-color: {COLOR_TERMINAL_BG};
+                border: 1px solid {COLOR_BORDER};
+                border-radius: 6px;
+                padding: 12px;
+                font-family: {FONT_MONO};
+                font-size: 13px;
+                color: {COLOR_TEXT_PRIMARY};
+                line-height: 1.6;
+            }}
+        """)
+        layout.addWidget(self.terminal)
 
-        # Define the main Log.Treeview style
-        style.configure(
-            "Log.Treeview",
-            background=T.BG_NAVY,
-            foreground=T.TEXT_PRIMARY,
-            fieldbackground=T.BG_NAVY,
-            borderwidth=0,
-            font=T.FONT_MONO_SMALL,
-            rowheight=rowheight,          # critical for proper row display
+    def log(self, level: str, source: str, message: str) -> None:
+        """
+        Append a formatted log line.
+
+        Args:
+            level: 'INFO', 'WARN', or 'ERROR' (case‑insensitive)
+            source: e.g., 'SYSTEM', 'PLC', 'WORKER', 'SIM', etc.
+            message: the log text
+        """
+        ts = datetime.now().strftime("%H:%M:%S")
+        level_upper = level.upper()
+
+        # Map level to color
+        level_colors = {
+            "INFO": COLOR_GREEN,
+            "WARN": COLOR_AMBER,
+            "ERROR": COLOR_RED,
+        }
+        level_color = level_colors.get(level_upper, COLOR_TEXT_SECONDARY)
+
+        # Source styling: bold cyan for PLC/WORKER/FORK, white otherwise
+        if source.upper() in ("FORK", "PLC", "WORKER"):
+            src_color = COLOR_ACCENT
+        else:
+            src_color = "#ffffff"  # white
+
+        # Build HTML line
+        html = (
+            f'<span style="color:{COLOR_AMBER}">[{ts}]</span> '
+            f'<span style="color:{level_color}">[{level_upper}]</span> '
+            f'<span style="color:{src_color}; font-weight:bold">{source}</span>: '
+            f'<span style="color:{COLOR_TEXT_PRIMARY}">{message}</span>'
         )
-        # Define the heading style
-        style.configure(
-            "Log.Treeview.Heading",
-            background=T.BG_PANEL,
-            foreground=T.TEXT_SECONDARY,
-            font=T.FONT_SMALL,
-            relief="flat",
-        )
-        # Map selection colors
-        style.map(
-            "Log.Treeview",
-            background=[("selected", T.PRIMARY_DARK)],
-        )
+        self.terminal.append(html)
 
-        self.tree = ttk.Treeview(
-            container,
-            columns=columns,
-            show="headings",
-            style="Log.Treeview",   # use the locally defined style
-            height=8,
-        )
+        # Trim old lines to avoid memory bloat
+        doc = self.terminal.document()
+        while doc.blockCount() > self.MAX_LINES:
+            cursor = self.terminal.textCursor()
+            cursor.movePosition(cursor.Start)
+            cursor.select(cursor.BlockUnderCursor)
+            cursor.removeSelectedText()
+            cursor.deleteChar()
 
-        self.tree.heading("time", text="TIME")
-        self.tree.heading("level", text="LEVEL")
-        self.tree.heading("source", text="SOURCE")
-        self.tree.heading("message", text="MESSAGE")
+        # Auto‑scroll to bottom
+        sb = self.terminal.verticalScrollBar()
+        sb.setValue(sb.maximum())
 
-        self.tree.column("time", width=100, anchor="w")
-        self.tree.column("level", width=70, anchor="center")
-        self.tree.column("source", width=140, anchor="w")
-        self.tree.column("message", width=400, anchor="w")
-
-        scrollbar = ttk.Scrollbar(container, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=scrollbar.set)
-        self.tree.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-
-        for level, color in self.LEVEL_COLORS.items():
-            self.tree.tag_configure(level.lower(), foreground=color)
-
-    def add_entry(self, level, source, message, timestamp=None):
-        if timestamp is None:
-            timestamp = datetime.now()
-        time_str = timestamp.strftime("%H:%M:%S.%f")[:-3]
-        # Insert at the top (index 0) - newest first
-        self.tree.insert("", 0, values=(time_str, level, source, message), tags=(level.lower(),))
-
-        # Enforce row limit: remove oldest rows from the bottom
-        children = self.tree.get_children()
-        while len(children) > self.MAX_ROWS:
-            self.tree.delete(children[-1])
-            children = children[:-1]
-
-        # Force the treeview to update its display immediately
-        self.tree.update_idletasks()
-
-    def clear(self):
-        for item in self.tree.get_children():
-            self.tree.delete(item)
+    def clear(self) -> None:
+        """Clear all log entries."""
+        self.terminal.clear()
