@@ -1,200 +1,178 @@
-# Snap7 – Industrial Communication Toolkit
+# Snap7 Qt Monitor & Diagnostic Station
 
-[![License: LGPL v3](https://img.shields.io/badge/License-LGPLv3-blue.svg)](lgpl-3.0.txt)
-[![CI](https://github.com/SCADACS/snap7/actions/workflows/smoke-test.yml/badge.svg)](https://github.com/SCADACS/snap7/actions)
+[![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](LICENSE)
+[![Python: 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)]()
+[![Framework: PySide6](https://img.shields.io/badge/Framework-PySide6%20(Qt6)-green.svg)]()
+[![Platform: Windows | Linux](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey.svg)]()
 
-Snap7 is an open-source, multi-platform Ethernet suite that natively connects to Siemens S7 PLCs. This repository is a **community-maintained fork** of the original [Snap7](http://snap7.sourceforge.net/) project, designed to bridge the gap between industrial automation and modern software engineering practices.
+A high-performance, asynchronous desktop HMI and commissioning workbench for Siemens S7 PLCs, built with **PySide6 (Qt for Python)** and powered by the **Snap7** communication suite.
 
-It extends the core library with features tailored for building **software PLCs, modern SCADA interfaces, and data-driven industrial applications**.
-
----
-
-## 🎯 Key Features & Enhancements
-
-Industrial automation code often lacks modern software practices such as version control, automated testing, and security audits. This fork addresses those gaps by introducing:
-
-- **Program Block Management**: Programmatically upload, download, and list PLC blocks.
-- **Dynamic SZL Support**: Query system status lists (SZL) for advanced diagnostics.
-- **Variable Watching & Monitor Mode**: Enable real-time debugging and monitoring.
-- **Modern Python/Tkinter Dashboard**: A fully functional, live SCADA-like UI featuring real-time charts, asset tables, and alarm management.
+Designed for automation engineers and field technicians to monitor, test, and validate PLC Data Blocks (DB) during commissioning—without requiring heavy engineering suites (such as TIA Portal or Step 7).
 
 ---
 
-## 🚀 Quick Start: Live Dashboard Demo
+## 📸 Overview
 
-This repository includes a Python-based SCADA dashboard that connects to any Snap7 server, whether it's a real PLC or a software simulation.
-
-### Running in Simulation Mode
-
-1. Navigate to the demo directory:
-   ```bash
-   cd demo
-   ```
-2. Install the required Python dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. Launch the dashboard in simulation mode:
-   ```bash
-   python scada_dashboard.py --simulate
-   ```
-
-**Dashboard Capabilities:**
-- Real-time temperature and data charting.
-- Asset table for monitoring connected PLCs and sensors.
-- Comprehensive communication logging.
-- Alarm management and system trend reporting.
-
-> *Note: Ensure you have a working display environment to view the Tkinter GUI.*
+![HMI Monitor Screenshot](demo/screenshot.png)
 
 ---
 
-## 📁 Project Structure
+## ⚙️ Key Capabilities
 
-The repository is organized to keep the core C++ library separate from the modern Python tooling and documentation.
+* **Asynchronous Polling Engine:** Background cyclic polling via dedicated worker threads (`QThread`), preventing UI freeze during heavy traffic or network delays.
+* **Real-Time Data Block Decoding:** Live reading and structured parsing of S7 Data Blocks supporting standard types (`BOOL`, `INT`, `DINT`, `REAL`).
+* **Hardware-Free Simulation:** Built-in dynamic mock server for offline commissioning, loopback testing, and UI demonstration without physical hardware.
+* **Automatic Failover & Reconnection:** Graceful degradation to loopback simulation upon communication loss, with auto-recovery on link restoration.
+* **High-Rate Telemetry Visualization:** Low-overhead, hardware-accelerated time-series plotting powered by `pyqtgraph`.
+* **Diagnostic Console:** Color-coded protocol telemetry, time-stamped status messages, and operational event logging.
+* **Persistent Configuration:** Quick runtime configuration for PLC Target IP, Rack, Slot, DB numbers, and update cycle intervals (`config.ini`).
 
-```text
-snap7/
-├── demo/                     # Python SCADA dashboard and simulation tools
-│   ├── scada_dashboard.py    # Main entry point for the GUI
-│   ├── fork_bridge.py        # Snap7 client/server bridge implementation
-│   ├── sensor_simulator.py   # Simulated PLC data generator
-│   ├── test_bridge.py        # Unit tests for the bridge
-│   ├── apply_patch_fork.py   # Utility to apply custom patches
-│   ├── run_dashboard.bat     # Windows execution launcher
-│   ├── requirements.txt      # Python dependencies
-│   └── ui/                   # Tkinter User Interface components
-│       ├── asset_panel.py    # Connected assets list
-│       ├── chart_widget.py   # Live data chart
-│       ├── dashboard_ui.py   # Main dashboard layout
-│       ├── log_widget.py     # Communication log viewer
-│       ├── status_cards.py   # System status & connection cards
-│       ├── theme.py          # Dark industrial color theme
-│       ├── views.py          # View manager and logic
-│       └── widgets.py        # Reusable UI widgets (LEDs, badges, etc.)
-├── src/                      # Core Snap7 C++ source code
-│   ├── core/                 # S7 protocol implementation
-│   ├── lib/                  # Library entry points (snap7.def, libmain)
-│   └── sys/                  # Platform abstraction layer (threads, sockets)
-├── docs/                     # Extended documentation
-│   ├── secure-deployment.md  # Guidelines for secure industrial deployment
-│   └── industrial-networking.md
-├── tools/                    # Auxiliary scripts and utilities
-├── README.md                 # Project overview (this file)
-├── SECURITY.md               # Security policies and reporting
-├── gpl.txt                   # GPL license text
-├── lgpl-3.0.txt              # LGPLv3 license text
-└── HISTORY.txt               # Version history and changelog
+---
+
+## 🏗️ Architecture
+
+The application cleanly decouples communication drivers from UI rendering to ensure deterministic polling and responsive operator controls:
+
+
+```
+
+┌─────────────────────────────────────────────────────────────┐
+│                      PySide6 UI Layer                       │
+│  (Views, Hardware-Accelerated Charts, Telemetry Cards)     │
+└──────────────────────────────▲──────────────────────────────┘
+│ Qt Signals / Slots
+┌──────────────────────────────▼──────────────────────────────┐
+│                    Worker Thread Engine                     │
+│  (Non-blocking cyclic task, setpoint dispatch, watchdog)    │
+└──────────────────────────────▲──────────────────────────────┘
+│ C-types ABI
+┌──────────────────────────────▼──────────────────────────────┐
+│                     Snap7 Native Driver                     │
+│               (snap7.dll / libsnap7.so)                     │
+└──────────────────────────────▲──────────────────────────────┘
+│ ISO-on-TCP (RFC 1006 / S7comm)
+▼
+Siemens PLC / Mock Server
+
 ```
 
 ---
 
-## 📦 Installation (Pre-built Binaries)
+## 🔌 PLC Compatibility
 
-| Platform       | Architecture | Library Path                        |
-|----------------|--------------|-------------------------------------|
-| **Windows**    | 32-bit       | `Windows/Win32/snap7.dll`           |
-| **Windows**    | 64-bit       | `Windows/Win64/snap7.dll`           |
-| **Linux**      | x86_64       | `Linux/x86_64/libsnap7.so`          |
-| **Linux (ARM)**| ARMv7 (RPi)  | `Linux/arm_v7/libsnap7.so`          |
+Compatible with any Siemens PLC supporting S7comm over ISO-on-TCP:
+
+* **S7-300 / S7-400 / WinAC:** Full native support.
+* **S7-1200 / S7-1500:** Supported with optimized block access disabled (Standard DB) and **"Permit access with PUT/GET communication"** enabled in the CPU hardware configuration.
+* **Snap7 Mock Server:** Built-in loopback support.
 
 ---
 
-## 🔧 Building from Source
+## 🚀 Quick Start
 
-### Prerequisites
+### 1. Prerequisites
 
-- **Linux (Ubuntu/Debian):** 
-  ```bash
-  sudo apt-get update && sudo apt-get install build-essential
-  ```
-- **Windows (MSYS2):** 
-  Install [MSYS2](https://www.msys2.org/), then install the MinGW-w64 toolchain:
-  ```bash
-  pacman -S --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-binutils make
-  ```
+* Python **3.10** or higher.
+* Compatible OS: Windows 10/11 (x64) or Linux (x86_64).
 
-### Compiling the Core Library
+### 2. Installation
 
-- **Linux (x86_64):**
-  ```bash
-  cd build/unix
-  make -f x86_64_linux.mk
-  ```
+Clone the repository and install required dependencies:
 
-- **Windows (MinGW64):**
-  ```bash
-  cd build/windows/MinGW64
-  make
-  ```
-
-### Building and Running Tests
-
-To verify your build, compile and run the loopback test:
 ```bash
-cd examples/cpp/<your-platform>
-make
-./loopback_test
+git clone [https://github.com/esmaeilireza/snap7-qt-monitor.git](https://github.com/esmaeilireza/snap7-qt-monitor.git)
+cd snap7-qt-monitor
+pip install -r requirements.txt
+
+```
+
+### 3. Running in Simulation Mode (Offline)
+
+Test the dashboard immediately without hardware:
+
+```bash
+python scada_dashboard.py --simulate
+
+```
+
+### 4. Running with the Dynamic Mock Server
+
+Start the local mock server to simulate changing PLC registers:
+
+```bash
+python snap7_server.py
+
+```
+
+In a separate terminal, start the monitor station:
+
+```bash
+python scada_dashboard.py
+
+```
+
+Set the IP address to `127.0.0.1` (Rack: `0`, Slot: `2`) within the Settings tab to bind to the local server.
+
+---
+
+## 📁 Repository Structure
+
+```
+snap7-qt-monitor/
+├── scada_dashboard.py       # Main application entry point
+├── fork_bridge.py           # Typed Snap7 Python bridge & client abstraction
+├── sensor_simulator.py      # Dynamic process variable generator
+├── snap7_server.py          # Standalone S7 mock server (DB1 emulation)
+├── test_bridge.py           # Unit tests and loopback validation
+├── requirements.txt         # Runtime dependencies
+├── config.ini               # Runtime persistent configuration
+├── ui/                      # Modular UI components
+│   ├── dashboard_ui.py      # Main window and layout orchestration
+│   ├── chart_widget.py      # pyqtgraph real-time telemetry plotting
+│   ├── status_cards.py      # KPI cards & state indicators
+│   ├── asset_panel.py       # Station topology & target selector
+│   ├── log_widget.py        # Real-time event & diagnostic terminal
+│   ├── theme.py             # Dark industrial design palette
+│   └── widgets.py           # Base UI primitives & controls
+└── LICENSE                  # LGPL-3.0 license
+
 ```
 
 ---
 
-## 🔌 Python Wrapper Usage
+## 🛠️ Configuration Guide
 
-The most straightforward way to interact with Snap7 via Python is by utilizing the included dashboard code as a reference. 
+Default parameters can be adjusted via the UI Settings panel or directly in `config.ini`:
 
-**Basic Client Example:**
-```python
-from demo.fork_bridge import ForkClient
+```ini
+[PLC]
+ip = 192.168.0.1
+rack = 0
+slot = 1
+port = 102
+polling_interval_ms = 100
 
-# Initialize and connect to the PLC
-client = ForkClient()
-client.connect("192.168.1.1", 0, 1)
+[MAPPING]
+db_number = 1
+start_offset = 0
+size = 64
 
-# Read 100 bytes from DB1 starting at offset 0
-data = client.db_read(1, 0, 100)
-print(data)
-
-# Cleanly disconnect
-client.disconnect()
 ```
-
----
-
-## 🔄 Continuous Integration
-
-This project leverages GitHub Actions to ensure code quality and stability across platforms:
-
-- **Smoke Tests**: Automated building and execution of loopback tests on Ubuntu and Windows.
-- **CodeQL Analysis**: Continuous security and code quality scanning for C/C++.
-- **Issue Management**: Automated triage and stale issue bot to keep the tracker organized.
-
----
-
-## 🔐 Security
-
-Deploying software in industrial environments requires strict adherence to security best practices. Before deploying, please review our security documentation:
-
-- [SECURITY.md](SECURITY.md) - Vulnerability reporting and security policies.
-- [docs/secure-deployment.md](docs/secure-deployment.md) - Hardening guidelines.
-- [docs/industrial-networking.md](docs/industrial-networking.md) - Network isolation and safety.
 
 ---
 
 ## 📄 License
 
-This project is licensed under the **GNU Lesser General Public License v3.0 (LGPLv3)**. 
-Please refer to the [LGPL-3.0](lgpl-3.0.txt) and [GPL](gpl.txt) files for the full legal text.
+This project is licensed under the **GNU Lesser General Public License v3.0 (LGPLv3)** - see the [LICENSE](https://www.google.com/search?q=LICENSE) file for details.
 
 ---
 
-## 🙌 Contributing
+## 🙏 Acknowledgments
 
-Contributions are highly encouraged! Whether it's fixing bugs, adding new features, or improving documentation, please feel free to open an issue or submit a pull request.
+* **Davide Nardella** for designing and maintaining the foundational [Snap7](https://www.google.com/search?q=https://snap7.sourceforge.net/) Ethernet communication library.
+* The **Qt Company** for PySide6.
+* The **pyqtgraph** team for providing low-overhead data visualization tools.
 
----
+```
 
-## 🌐 Acknowledgments
-
-- **Davide Nardella** and the original Snap7 authors for creating an outstanding and robust foundational library.
-- The **Industrial Automation Community** for continuous feedback, real-world testing, and inspiration.
+```
